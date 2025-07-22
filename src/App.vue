@@ -1,30 +1,14 @@
-<script setup>
-import HelloWorld from './components/HelloWorld.vue'
-</script>
-
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
+  <router-view />
 </template>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
+<script setup>
+// Logika specyficzna dla App.vue, jeśli potrzebna,
+// ale dla głównego layoutu dashboardu logika będzie w DashboardLayout.vue
+</script>
+
+<style>
+/* Globalne style są już importowane w main.js poprzez import './style.css'; */
+/* Jeśli potrzebujesz tutaj specyficznych stylów tylko dla #app-container lub globalnych styli,
+   które nie są w style.css, możesz je tu dodać, ale NIE importuj ponownie './style.css' */
 </style>

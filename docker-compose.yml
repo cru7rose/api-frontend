@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  apidanxils-frontend:
+    # Buduj obraz na podstawie pliku Dockerfile w bieżącym folderze
+    build: .
+    # Nadaj kontenerowi przyjazną nazwę
+    container_name: apidanxils-frontend
+    # Zawsze uruchamiaj ponownie kontener, jeśli się zatrzyma
+    restart: always
+    ports:
+      # Mapuj port 81 na serwerze (host) do portu 80 wewnątrz kontenera
+      - "81:80"
