@@ -1,8 +1,8 @@
 <template>
     <div class="fixed inset-0 bg-black bg-opacity-60 z-40 flex justify-center items-center" @click.self="emit('close')">
-        <div v-if="isLoadingDetails || isCheckingAliases" class="text-center text-white">
+        <div v-if="isLoadingDetails" class="text-center text-white">
             <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-white mx-auto"></div>
-            <p class="mt-3">{{ isCheckingAliases ? 'Sprawdzanie statusu aliasów...' : 'Ładowanie szczegółów błędu...' }}</p>
+            <p class="mt-3">Ładowanie szczegółów błędu...</p>
         </div>
         <div v-else-if="error" class="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col" @click.stop>
             <header class="p-5 border-b border-slate-200 flex justify-between items-center flex-shrink-0">
@@ -39,15 +39,13 @@
                     
                     <div class="space-y-6">
                         <AddressCorrectionForm
-                            title="Dane Adresu Nadania:"
+                            title="Uzupełnij / Popraw Dane Adresu Nadania:"
                             :address-data="editablePickupAddress"
-                            :disabled="!isPickupEditable"
                             @update="handleFormUpdate('pickup', $event)"
                         />
                         <AddressCorrectionForm
-                            title="Dane Adresu Dostawy:"
+                            title="Uzupełnij / Popraw Dane Adresu Dostawy:"
                             :address-data="editableDeliveryAddress"
-                            :disabled="!isDeliveryEditable"
                             @update="handleFormUpdate('delivery', $event)"
                         />
                     </div>
@@ -84,7 +82,6 @@
 import { ref, onMounted, reactive, watch, computed } from 'vue';
 import { useErrorStore } from '@/stores/errorStore';
 import AddressCorrectionForm from '@/components/forms/AddressCorrectionForm.vue';
-import apiClient from '@/services/api.js';
 
 const props = defineProps({
   errorId: {
@@ -99,12 +96,6 @@ const errorStore = useErrorStore();
 
 const error = ref(null);
 const isLoadingDetails = ref(true);
-const isCheckingAliases = ref(false);
-
-const aliasStatus = reactive({
-    pickup: null, // true, false, or null
-    delivery: null
-});
 
 const isResubmitting = ref(false);
 const isEmailSending = ref(false);
@@ -117,37 +108,7 @@ const isAddressError = computed(() => error.value?.errorType?.includes('ADDRESS'
 const editablePickupAddress = reactive({ alias: '', street: '', houseNo: '', postalCode: '', city: '' });
 const editableDeliveryAddress = reactive({ alias: '', street: '', houseNo: '', postalCode: '', city: '' });
 
-const isPickupEditable = computed(() => {
-    // Jeśli oba aliasy nie istnieją, oba formularze są edytowalne
-    if (aliasStatus.pickup === false && aliasStatus.delivery === false) return true;
-    // Jeśli tylko alias odbioru nie istnieje, tylko ten formularz jest edytowalny
-    if (aliasStatus.pickup === false) return true;
-    // W pozostałych przypadkach (gdy alias istnieje) jest zablokowany
-    return false;
-});
-
-const isDeliveryEditable = computed(() => {
-    // Jeśli oba aliasy nie istnieją, oba formularze są edytowalne
-    if (aliasStatus.pickup === false && aliasStatus.delivery === false) return true;
-    // Jeśli tylko alias dostawy nie istnieje, tylko ten formularz jest edytowalny
-    if (aliasStatus.delivery === false) return true;
-    // W pozostałych przypadkach (gdy alias istnieje) jest zablokowany
-    return false;
-});
-
-
-const checkAlias = async (custId, alias) => {
-    if (!custId || !alias) return false;
-    try {
-        const response = await apiClient.get('/api/aliases/check', { params: { custId, alias } });
-        return response.data.exists;
-    } catch (e) {
-        console.error(`Błąd sprawdzania aliasu ${alias}:`, e);
-        return false; // Bezpieczniej założyć, że nie istnieje, aby umożliwić edycję
-    }
-};
-
-const parseAndSetFormData = async () => {
+const parseAndSetFormData = () => {
     if (!error.value || !error.value.originalAddressJson) return;
     try {
         const data = JSON.parse(error.value.originalAddressJson);
@@ -165,22 +126,10 @@ const parseAndSetFormData = async () => {
             postalCode: data.DeliveryPostalCode || '',
             city: data.DeliveryCity || '',
         });
-
-        // Sprawdź statusy aliasów
-        isCheckingAliases.value = true;
-        const [pickupExists, deliveryExists] = await Promise.all([
-            checkAlias(data.CustID, data.PickUpAlias),
-            checkAlias(data.CustID, data.DeliveryAlias)
-        ]);
-        aliasStatus.pickup = pickupExists;
-        aliasStatus.delivery = deliveryExists;
-        isCheckingAliases.value = false;
-
     } catch (e) {
-        console.error("Błąd parsowania originalAddressJson lub sprawdzania aliasów:", e);
+        console.error("Błąd parsowania originalAddressJson:", e);
         resubmitMessage.value = "Błąd odczytu oryginalnych danych zlecenia.";
         resubmitMessageType.value = "error";
-        isCheckingAliases.value = false;
     }
 };
 
@@ -189,7 +138,7 @@ onMounted(async () => {
     try {
         await errorStore.fetchErrorDetails(props.errorId);
         error.value = errorStore.selectedRequestDetails;
-        await parseAndSetFormData();
+        parseAndSetFormData();
     } catch (e) {
         resubmitMessage.value = "Nie udało się załadować szczegółów błędu.";
         resubmitMessageType.value = "error";
@@ -208,7 +157,7 @@ const handleFormUpdate = (type, data) => {
 
 const selectInitialSuggestion = (suggestion) => {
     if (confirm(`Czy na pewno chcesz użyć adresu: "${suggestion.fullAddressLabel}"? Spowoduje to nadpisanie danych w formularzu.`)) {
-        const targetForm = isPickupEditable.value ? editablePickupAddress : editableDeliveryAddress;
+        const targetForm = error.value.errorType.includes('PICKUP') ? editablePickupAddress : editableDeliveryAddress;
         targetForm.street = suggestion.street || '';
         targetForm.houseNo = suggestion.houseNumber || '';
         targetForm.postalCode = suggestion.postalCode || '';
