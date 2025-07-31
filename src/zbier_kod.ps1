@@ -15,7 +15,6 @@ $uwzglednianeRozszerzenia = @(
     '.sql',       # Skrypty SQL
     '.html',      # Pliki HTML (np. Thymeleaf)
     '.css',       # Arkusze stylów
-    '.vue',       # Arkusze stylów
     '.js'         # Skrypty JavaScript
 )
 
