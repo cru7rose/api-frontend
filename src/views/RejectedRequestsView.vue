@@ -1,121 +1,143 @@
 <template>
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-        <div class="bg-gradient-to-r from-slate-700 to-slate-900 text-white p-6 rounded-xl shadow-2xl mb-8">
-            <h1 class="text-3xl sm:text-4xl font-bold">Odrzucone Żądania</h1>
-            <p class="mt-2 text-slate-300">Przeglądaj, filtruj i zarządzaj odrzuconymi zleceniami.</p>
-        </div>
-
-        <div class="mb-6 p-6 bg-white rounded-xl shadow-lg">
-            <h2 class="text-xl font-semibold mb-4 text-slate-700 border-b border-slate-200 pb-3">Filtry</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                    <label for="filterBarcode" class="block text-xs font-medium text-slate-600 mb-1">Kod Kreskowy:</label>
-                    <input type="text" id="filterBarcode" v-model="localFilters.barcode" @input="applyFilterDebounced('barcode', $event.target.value)"
-                           class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm"
-                           placeholder="Wpisz kod...">
-                </div>
-                <div>
-                    <label for="filterErrorType" class="block text-xs font-medium text-slate-600 mb-1">Typ Błędu:</label>
-                    <select id="filterErrorType" v-model="localFilters.errorType" @change="applyFilterDebounced('errorType', $event.target.value)"
-                            class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm bg-white">
-                        <option value="">Wszystkie</option>
-                        <option value="ADDRESS_ALIAS_MISMATCH_DB">Niezgodność Aliasu DB</option>
-                        <option value="ADDRESS_PROVIDER_NEEDS_REVIEW">Adres Wymaga Weryfikacji</option>
-                        <option value="ADDRESS_PROVIDER_INVALID">Adres Niepoprawny</option>
-                        <option value="ADDRESS_CUSTOMER_VERIFICATION_PENDING">Oczekuje na Potw. Klienta</option>
-                        <option value="EXTERNAL_SERVICE_FAILURE">Błąd Usługi Zewnętrznej</option>
-                        <option value="ADDRESS_DB_ERROR">Błąd DB Adresu</option>
-                        <option value="VALIDATION">Błąd Walidacji</option>
-                        <option value="PROCESSING">Błąd Przetwarzania</option>
-                        <option value="DESERIALIZATION_ERROR">Błąd Deserializacji</option>
-                        <option value="CONSTRAINT_VIOLATION">Naruszenie Ograniczeń</option>
-                        <option value="LISTENER_EXECUTION_FAILURE">Błąd Listenera</option>
-                    </select>
-                </div>
+  <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+    <div class="bg-gradient-to-r from-slate-700 to-slate-900 text-white p-6 rounded-xl shadow-2xl mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-bold">Odrzucone Żądania</h1>
+                <p class="mt-2 text-slate-300">Przeglądaj, filtruj i zarządzaj odrzuconymi zleceniami.</p>
             </div>
+            <button 
+                @click="triggerRecovery" 
+                :disabled="isRecoveryLoading"
+                class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors flex items-center disabled:opacity-50 disabled:cursor-wait">
+                <svg v-if="!isRecoveryLoading" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5m-4-1v-4h4"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9a9 9 0 0114.48-2.73M20 15a9 9 0 01-14.48 2.73"></path></svg>
+                <svg v-else class="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>{{ isRecoveryLoading ? 'Przetwarzanie...' : 'Ponów Przetwarzanie' }}</span>
+            </button>
         </div>
-
-        <div v-if="errorStore.isLoading && !errorStore.rejectedRequests.length" class="text-center py-16">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-500 mx-auto"></div>
-            <p class="text-lg text-slate-500 mt-5">Ładowanie danych...</p>
-        </div>
-        <div v-else-if="!errorStore.isLoading && errorStore.rejectedRequests.length === 0" class="text-center py-16 bg-white rounded-xl shadow-md">
-            <svg class="mx-auto h-16 w-16 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-            </svg>
-            <h3 class="mt-3 text-lg font-medium text-slate-800">Brak odrzuconych żądań</h3>
-            <p class="mt-1 text-sm text-slate-500">Nie znaleziono żądań pasujących do wybranych filtrów.</p>
-        </div>
-
-        <div v-else class="bg-white rounded-xl shadow-xl overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th @click="changeSort('eventId')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">ID Błędu <span v-html="sortIcon('eventId')"></span></th>
-                        <th @click="changeSort('requestID')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Request ID <span v-html="sortIcon('requestID')"></span></th>
-                        <th @click="changeSort('barcode')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Barcode <span v-html="sortIcon('barcode')"></span></th>
-                        <th @click="changeSort('errorType')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Typ Błędu <span v-html="sortIcon('errorType')"></span></th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Weryf. Adr.</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Wiadomość</th>
-                        <th @click="changeSort('createdAt')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Data <span v-html="sortIcon('createdAt')"></span></th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Akcje</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-slate-200">
-                    <tr v-for="error in errorStore.rejectedRequests" :key="error.id" class="hover:bg-slate-50/70 transition duration-150 ease-in-out">
-                        <td class="px-4 py-3 whitespace-nowrap text-xs text-slate-600 font-mono">{{ error.eventId.substring(0,8) }}...</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.requestID || 'N/A' }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.barcode || 'N/A' }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm">
-                            <span :class="getErrorTypeClassForTable(error.errorType)">{{ error.errorType || 'N/A' }}</span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.addressVerificationStatus || 'N/A' }}</td>
-                        <td class="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" :title="error.errorMessage">
-                            {{ error.errorMessage ? error.errorMessage.substring(0, 70) + (error.errorMessage.length > 70 ? '...' : '') : 'Brak' }}
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDateForTable(error.createdAt) }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                            <button @click="openErrorDetailsModal(error)" class="text-indigo-600 hover:text-indigo-800 font-semibold hover:underline text-xs">Szczegóły</button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div class="py-3 px-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                <div class="text-xs text-slate-600">
-                    Strona {{ errorStore.pagination.currentPage + 1 }} / {{ errorStore.pagination.totalPages }} ({{ errorStore.pagination.totalElements }} wyników)
-                </div>
-                <div class="flex space-x-1.5">
-                    <button @click="goToPage(errorStore.pagination.currentPage - 1)" :disabled="errorStore.pagination.currentPage === 0"
-                            class="px-3 py-1.5 border border-slate-300 text-xs font-medium rounded-md text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out">
-                        Poprzednia
-                    </button>
-                    <button @click="goToPage(errorStore.pagination.currentPage + 1)" :disabled="errorStore.pagination.currentPage >= errorStore.pagination.totalPages - 1"
-                            class="px-3 py-1.5 border border-slate-300 text-xs font-medium rounded-md text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out">
-                        Następna
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <ErrorDetailsModal 
-            v-if="showModal"
-            :error-id="currentSelectedErrorId"
-            @close="handleCloseModal"
-            @order-resubmitted="handleOrderResubmitted"
-        />
     </div>
+
+    <div class="mb-6 p-6 bg-white rounded-xl shadow-lg">
+        <h2 class="text-xl font-semibold mb-4 text-slate-700 border-b border-slate-200 pb-3">Filtry</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label for="filterBarcode" class="block text-xs font-medium text-slate-600 mb-1">Kod Kreskowy:</label>
+                <input type="text" id="filterBarcode" v-model="localFilters.barcode" @input="applyFilterDebounced('barcode', $event.target.value)"
+                        class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm"
+                        placeholder="Wpisz kod...">
+            </div>
+            <div>
+                <label for="filterErrorType" class="block text-xs font-medium text-slate-600 mb-1">Typ Błędu:</label>
+                <select id="filterErrorType" v-model="localFilters.errorType" @change="applyFilterDebounced('errorType', $event.target.value)"
+                        class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm bg-white">
+                    <option value="">Wszystkie</option>
+                    <option value="DELIVERY_ADDRESS_ALIAS_MISSING">Adres Dostawy do Potwierdzenia</option>
+                    <option value="PICKUP_ADDRESS_ALIAS_MISSING">Adres Nadawcy do Potwierdzenia</option>
+                    <option value="ADDRESS_REPROCESSED">Potwierdzone Adresy</option>
+                    <option value="ADDRESS_ALIAS_MISMATCH_DB">Niezgodność Aliasu DB</option>
+                    <option value="ADDRESS_PROVIDER_NEEDS_REVIEW">Adres Wymaga Weryfikacji</option>
+                    <option value="ADDRESS_PROVIDER_INVALID">Adres Niepoprawny</option>
+                    <option value="ADDRESS_CUSTOMER_VERIFICATION_PENDING">Oczekuje na Potw. Klienta</option>
+                    <option value="EXTERNAL_SERVICE_FAILURE">Błąd Usługi Zewnętrznej</option>
+                    <option value="ADDRESS_DB_ERROR">Błąd DB Adresu</option>
+                    <option value="VALIDATION">Błąd Walidacji</option>
+                    <option value="PROCESSING">Błąd Przetwarzania</option>
+                    <option value="DESERIALIZATION_ERROR">Błąd Deserializacji</option>
+                    <option value="CONSTRAINT_VIOLATION">Naruszenie Ograniczeń</option>
+                    <option value="LISTENER_EXECUTION_FAILURE">Błąd Listenera</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="errorStore.isLoading && !errorStore.rejectedRequests.length" class="text-center py-16">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-500 mx-auto"></div>
+        <p class="text-lg text-slate-500 mt-5">Ładowanie danych...</p>
+    </div>
+    <div v-else-if="!errorStore.isLoading && errorStore.rejectedRequests.length === 0" class="text-center py-16 bg-white rounded-xl shadow-md">
+        <svg class="mx-auto h-16 w-16 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        </svg>
+        <h3 class="mt-3 text-lg font-medium text-slate-800">Brak odrzuconych żądań</h3>
+        <p class="mt-1 text-sm text-slate-500">Nie znaleziono żądań pasujących do wybranych filtrów.</p>
+    </div>
+    <div v-else class="bg-white rounded-xl shadow-xl overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th @click="changeSort('eventId')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">ID Błędu <span v-html="sortIcon('eventId')"></span></th>
+                    <th @click="changeSort('requestID')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Request ID <span v-html="sortIcon('requestID')"></span></th>
+                    <th @click="changeSort('barcode')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Barcode <span v-html="sortIcon('barcode')"></span></th>
+                    <th @click="changeSort('errorType')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Typ Błędu <span v-html="sortIcon('errorType')"></span></th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Weryf. Adr.</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Wiadomość</th>
+                    <th @click="changeSort('createdAt')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">Data <span v-html="sortIcon('createdAt')"></span></th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Akcje</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-slate-200">
+                <tr v-for="error in errorStore.rejectedRequests" :key="error.id" 
+                    :class="[
+                      'transition duration-150 ease-in-out',
+                      error.errorType === 'ADDRESS_REPROCESSED' ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-slate-50/70'
+                    ]">
+                    <td class="px-4 py-3 whitespace-nowrap text-xs text-slate-600 font-mono">{{ error.eventId.substring(0,8) }}...</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.requestID || 'N/A' }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.barcode || 'N/A' }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm">
+                        <span :class="getErrorTypeClassForTable(error.errorType)">{{ error.errorType || 'N/A' }}</span>
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.addressVerificationStatus || 'N/A' }}</td>
+                    <td class="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" :title="error.errorMessage">
+                        {{ error.errorMessage ? error.errorMessage.substring(0, 70) + (error.errorMessage.length > 70 ? '...' : '') : 'Brak' }}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDateForTable(error.createdAt) }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                        <button @click="openErrorDetailsModal(error)" class="text-indigo-600 hover:text-indigo-800 font-semibold hover:underline text-xs">Szczegóły</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="py-3 px-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div class="text-xs text-slate-600">
+                Strona {{ errorStore.pagination.currentPage + 1 }} / {{ errorStore.pagination.totalPages }} ({{ errorStore.pagination.totalElements }} wyników)
+            </div>
+            <div class="flex space-x-1.5">
+                <button @click="goToPage(errorStore.pagination.currentPage - 1)" :disabled="errorStore.pagination.currentPage === 0"
+                        class="px-3 py-1.5 border border-slate-300 text-xs font-medium rounded-md text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out">
+                    Poprzednia
+                </button>
+                <button @click="goToPage(errorStore.pagination.currentPage + 1)" :disabled="errorStore.pagination.currentPage >= errorStore.pagination.totalPages - 1"
+                        class="px-3 py-1.5 border border-slate-300 text-xs font-medium rounded-md text-slate-700 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out">
+                    Następna
+                </button>
+            </div>
+        </div>
+    </div>
+    <ErrorDetailsModal 
+        v-if="showModal"
+        :error-id="currentSelectedErrorId"
+        @close="handleCloseModal"
+        @order-resubmitted="handleOrderResubmitted"
+    />
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useErrorStore } from '@/stores/errorStore';
 import ErrorDetailsModal from '@/components/modals/ErrorDetailsModal.vue';
+import apiClient from '@/services/api.js';
 
 const errorStore = useErrorStore();
 
 const currentSelectedErrorId = ref(null);
 const showModal = ref(false);
+const isRecoveryLoading = ref(false);
 
 const localFilters = ref({
   barcode: errorStore.filters.barcode,
@@ -129,6 +151,18 @@ const applyFilterDebounced = (filterName, value) => {
   filterDebounceTimeout = setTimeout(() => {
     errorStore.setFilter(filterName, value);
   }, 500);
+};
+
+const triggerRecovery = async () => {
+    isRecoveryLoading.value = true;
+    try {
+        await apiClient.post('/api/admin/address-verification/errors/retry-recoverable');
+        await errorStore.fetchRejectedRequests();
+    } catch (e) {
+        console.error("Błąd podczas uruchamiania ponawiania błędów:", e);
+    } finally {
+        isRecoveryLoading.value = false;
+    }
 };
 
 onMounted(() => {
@@ -145,12 +179,10 @@ const openErrorDetailsModal = (error) => {
   currentSelectedErrorId.value = error.id;
   showModal.value = true;
 };
-
 const handleCloseModal = () => {
   showModal.value = false;
   currentSelectedErrorId.value = null;
 };
-
 const handleOrderResubmitted = () => {
     handleCloseModal();
     errorStore.fetchRejectedRequests(errorStore.pagination.currentPage);
@@ -179,7 +211,8 @@ const sortIcon = (field) => {
 
 const getErrorTypeClassForTable = (errorType) => {
     let base = 'px-2 py-0.5 rounded-full text-xs font-semibold inline-block leading-tight ';
-    if (['ADDRESS_ALIAS_MISMATCH_DB', 'ADDRESS_PROVIDER_NEEDS_REVIEW', 'ADDRESS_PROVIDER_INVALID'].includes(errorType)) return base + 'bg-orange-100 text-orange-600 border border-orange-200';
+    if (errorType === 'ADDRESS_REPROCESSED') return base + 'bg-green-100 text-green-800 border border-green-300';
+    if (['DELIVERY_ADDRESS_ALIAS_MISSING', 'PICKUP_ADDRESS_ALIAS_MISSING', 'ADDRESS_ALIAS_MISMATCH_DB', 'ADDRESS_PROVIDER_NEEDS_REVIEW', 'ADDRESS_PROVIDER_INVALID'].includes(errorType)) return base + 'bg-orange-100 text-orange-600 border border-orange-200';
     if (errorType === 'ADDRESS_CUSTOMER_VERIFICATION_PENDING') return base + 'bg-yellow-100 text-yellow-600 border border-yellow-200';
     if (['VALIDATION', 'CONSTRAINT_VIOLATION', 'DESERIALIZATION_ERROR'].includes(errorType)) return base + 'bg-red-100 text-red-600 border border-red-200';
     if (['PROCESSING', 'LISTENER_EXECUTION_FAILURE', 'EXTERNAL_SERVICE_FAILURE', 'ADDRESS_DB_ERROR'].includes(errorType)) return base + 'bg-purple-100 text-purple-600 border border-purple-200';
