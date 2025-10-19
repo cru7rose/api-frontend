@@ -1,46 +1,45 @@
 /**
- * ARCHITECTURE: main.js bootstraps auth + env + orchestrator, builds router, and mounts a clean root.
+ * ARCHITECTURE: main.js mounts App.vue with router and pinia, and emits probe breadcrumbs.
+ * It follows the manifesto by ensuring a visible shell renders even if routes fail.
  * Responsibilities:
- * - Install Pinia, hydrate Auth, build router, mount a single root that renders <router-view/>.
+ * - Install Pinia, build router, mount App, and log deterministic startup milestones.
  */
-import { createApp, h, provide } from "vue";
+import { createApp } from "vue";
 import { createPinia } from "pinia";
-import "@/assets/main.css";
-import { AppBootstrapController } from "@/controllers/AppBootstrapController";
+import App from "@/App.vue";
 import { createRouterWithKey } from "@/router/index";
-import { AuthController } from "@/controllers/AuthController";
+import { AppBootstrapController } from "@/controllers/AppBootstrapController";
+import { StartupProbe } from "@/debug/StartupProbe";
 
 (async () => {
-  const pinia = createPinia();
+  const probe = new StartupProbe();
+  probe.mark("init:begin");
 
-  const auth = new AuthController();
-  auth.hydrateFromStorage();
+  const pinia = createPinia();
+  probe.mark("pinia:ready");
 
   const bootstrap = new AppBootstrapController();
   const boot = await bootstrap.bootstrap();
+  probe.mark("bootstrap:done");
+
   const router = createRouterWithKey(boot.googleKey);
+  probe.mark("router:created");
 
-  const Root = {
-    name: "Root",
-    setup() {
-      provide("auth", auth);
-      provide("orchestrator", boot.orchestrator);
-      provide("googleKey", boot.googleKey);
-      provide("health", boot.health);
-      return () => h("router-view");
-    },
-  };
+  const app = createApp(App);
 
-  const app = createApp(Root);
-
-  app.config.errorHandler = (err, _instance, _info) => {
+  app.config.errorHandler = (err) => {
     console.error("[vue-error]", err);
+    probe.mark(`vue-error:${err?.message || err}`);
   };
   window.addEventListener("error", (e) => {
     console.error("[window-error]", e?.error || e?.message || e);
+    probe.mark(`window-error:${e?.message || e}`);
   });
 
   app.use(pinia);
   app.use(router);
+  probe.mark("plugins:used");
+
   app.mount("#app");
+  probe.mark("mounted");
 })();

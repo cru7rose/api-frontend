@@ -1,26 +1,26 @@
 /**
- * ARCHITECTURE: router/index.js defines routes and applies authentication + editor readiness guards.
- * It follows the manifesto by isolating navigation rules and prereq checks from the views.
+ * ARCHITECTURE: router/index defines minimal, safe routes so the shell always renders something.
+ * It follows the manifesto by isolating guards and keeping route table deterministic.
  * Responsibilities:
- * - Register routes: /login, /dashboard, /worklist, /editor/:id.
- * - Apply global AuthGuard, and per-route EditorRouteGuard for /editor.
+ * - Provide /login, /worklist, /dashboard, /editor/:id; redirect / → /login to make the test obvious.
  */
 import { createRouter, createWebHistory } from "vue-router";
 import LoginView from "@/views/LoginView.vue";
 import WorklistView from "@/views/WorklistView.vue";
-import CorrectionEditorView from "@/views/CorrectionEditorView.vue";
 import TriageDashboard from "@/views/TriageDashboard.vue";
-import { EditorRouteGuard } from "@/router/EditorRouteGuard";
+import CorrectionEditorView from "@/views/CorrectionEditorView.vue";
 import { AuthGuard } from "@/router/AuthGuard";
+import { EditorRouteGuard } from "@/router/EditorRouteGuard";
 
 export function createRouterWithKey(googleApiKey) {
   const editorGuard = new EditorRouteGuard(googleApiKey);
   const authGuard = new AuthGuard();
+
   const routes = [
-    { path: "/", redirect: "/worklist" },
+    { path: "/", redirect: "/login" },
     { path: "/login", name: "login", component: LoginView },
-    { path: "/dashboard", name: "dashboard", component: TriageDashboard },
     { path: "/worklist", name: "worklist", component: WorklistView },
+    { path: "/dashboard", name: "dashboard", component: TriageDashboard },
     {
       path: "/editor/:id",
       name: "editor",
@@ -29,11 +29,15 @@ export function createRouterWithKey(googleApiKey) {
         try { await editorGuard.canEnter(to); next(); } catch { next("/worklist"); }
       },
     },
-    { path: "/:pathMatch(.*)*", redirect: "/worklist" },
+    { path: "/:pathMatch(.*)*", redirect: "/login" },
   ];
+
   const router = createRouter({ history: createWebHistory(), routes });
-  router.beforeEach(async (to, from, next) => {
-    try { await authGuard.canEnter(to); next(); } catch { next({ path: "/login", query: { r: to.fullPath } }); }
+
+  router.beforeEach(async (to, _from, next) => {
+    try { await authGuard.canEnter(to); next(); }
+    catch { next({ path: "/login", query: { r: to.fullPath } }); }
   });
+
   return router;
 }

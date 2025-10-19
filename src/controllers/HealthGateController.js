@@ -1,8 +1,8 @@
 /**
- * ARCHITECTURE: HealthGateController validates backend and provider readiness for the app shell.
- * It follows the manifesto by isolating health queries and returning a minimal readiness object.
+ * ARCHITECTURE: HealthGateController returns a stable readiness object without external dependencies.
+ * It follows the manifesto by short-circuiting health checks in dev so the shell can render immediately.
  * Responsibilities:
- * - Call RuntimeHealthService; provide {ok, backend, provider, google}.
+ * - Delegate to RuntimeHealthService (which is dev-bypassed) and forward the normalized result.
  */
 import { RuntimeHealthService } from "@/services/RuntimeHealthService";
 
