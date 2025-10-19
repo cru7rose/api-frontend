@@ -1,0 +1,557 @@
+
+================================================================================
+### PLIK: main.js
+================================================================================
+
+import { createApp } from 'vue'
+import App from './App.vue'
+import router from './router'
+import { createPinia } from 'pinia'
+import './assets/main.css'
+
+const app = createApp(App)
+
+const pinia = createPinia()
+app.use(pinia)
+app.use(router)
+app.mount('#app')
+
+
+================================================================================
+### PLIK: assets\main.css
+================================================================================
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+================================================================================
+### PLIK: router\index.js
+================================================================================
+
+// PLIK: router/index.js (FINALNA WERSJA)
+
+import { createRouter, createWebHistory } from 'vue-router';
+import DashboardLayout from '@/layouts/DashboardLayout.vue';
+import { useAuthStore } from '@/stores/authStore';
+
+const routes = [
+    { path: '/', redirect: '/dashboard' },
+    { path: '/websites_Overview', redirect: '/dashboard' },
+    { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
+    {
+      path: '/dashboard',
+      component: DashboardLayout,
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+        { path: 'change-password', name: 'changePassword', component: () => import('@/views/ChangePasswordView.vue') },
+        {
+          path: 'rejected-requests',
+          name: 'rejectedRequests',
+          component: () => import('@/views/RejectedRequestsView.vue'),
+          meta: { roles: ['ADMIN'] }
+        },
+        {
+          path: 'order-statuses',
+          name: 'orderStatuses',
+          component: () => import('@/views/OrderStatusView.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'status-export',
+          name: 'statusExport',
+          component: () => import('@/views/StatusExportView.vue'),
+          meta: { roles: ['ADMIN'] }
+        },
+        {
+          path: 'admin/address-providers',
+          name: 'adminAddressProviders',
+          component: () => import('@/views/admin/AddressProvidersView.vue'),
+          meta: { roles: ['ADMIN'] }
+        },
+        {
+          path: 'recently-added-addresses',
+          name: 'recentlyAddedAddresses',
+          component: () => import('@/views/RecentlyAddedAddressesView.vue'),
+          meta: { roles: ['ADMIN'] }
+        },
+        {
+          path: 'admin/address-upload',
+          name: 'adminAddressUpload',
+          component: () => import('@/views/admin/AddressUploadView.vue'),
+          meta: { roles: ['ADMIN'] }
+        },
+        {
+          path: 'hub-invoicing-rules', 
+          name: 'hubInvoicingRules',
+          component: () => import('@/views/admin/HubInvoicingRulesView.vue'), 
+          meta: {
+            requiresAuth: true, 
+            roles: ['ADMIN']  
+          }
+        }
+      ]
+    },
+    { path: '/:pathMatch(.*)*', name: 'NotFound', component: () => import('@/views/NotFoundView.vue') }
+];
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes
+});
+
+router.beforeEach(async (to, from, next) => {
+    const authStore = useAuthStore();
+    const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
+    const requiredRoles = to.matched.find(record => record.meta.roles)?.meta.roles;
+
+    if (requiresAuth && !authStore.isLoggedIn) {
+        next({ name: 'login', query: { redirect: to.fullPath } });
+    } else if (to.name === 'login' && authStore.isLoggedIn) {
+        next({ name: 'dashboard' });
+    } else if (requiresAuth && requiredRoles && !requiredRoles.some(role => authStore.userHasRole(role))) {
+        console.warn(`User ${authStore.user?.username} does not have required roles: ${requiredRoles} for route ${to.name}`);
+        next({ name: 'dashboard' });
+    } else {
+        next();
+    }
+});
+
+export default router;
+
+================================================================================
+### PLIK: services\addressSuggestionService.js
+================================================================================
+
+import apiClient from '@/services/api.js';
+
+const pollForResults = async (correlationId) => {
+  const maxRetries = 10;
+  const interval = 2000;
+
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+    
+    const statusResponse = await apiClient.get(`/api/admin/address-verification/operations/${correlationId}`);
+    const operation = statusResponse.data;
+
+    if (operation.status === 'COMPLETED') {
+      return operation.result?.suggestions || [];
+    }
+    if (operation.status === 'FAILED') {
+      throw new Error(operation.errorDetails || 'Operacja wyszukiwania sugestii nie powiodła się.');
+    }
+  }
+  throw new Error('Przekroczono czas oczekiwania na sugestie adresowe.');
+};
+
+export const fetchOnDemandSuggestions = async (addressQuery) => {
+  if (!addressQuery || Object.values(addressQuery).every(v => !v)) {
+    return [];
+  }
+  
+  try {
+    const initiateResponse = await apiClient.post('/api/admin/address-verification/suggest-on-demand', addressQuery);
+    const correlationId = initiateResponse.data.correlationId;
+    if (!correlationId) {
+        throw new Error("API nie zwróciło correlationId dla operacji sugestii.");
+    }
+    return await pollForResults(correlationId);
+  } catch (error) {
+    console.error('Błąd podczas pobierania dynamicznych sugestii:', error);
+    return [];
+  }
+};
+
+export const fetchByNameSearch = async (searchQuery) => {
+  if (!searchQuery || searchQuery.trim() === '') {
+    return [];
+  }
+  
+  try {
+    const initiateResponse = await apiClient.post('/api/admin/address-verification/search-by-name', searchQuery, {
+        headers: { 'Content-Type': 'text/plain' }
+    });
+    const correlationId = initiateResponse.data.correlationId;
+    if (!correlationId) {
+        throw new Error("API nie zwróciło correlationId dla operacji wyszukiwania.");
+    }
+    return await pollForResults(correlationId);
+  } catch (error) {
+    console.error('Błąd podczas wyszukiwania po nazwie:', error);
+    return [];
+  }
+};
+
+================================================================================
+### PLIK: services\api.js
+================================================================================
+
+import axios from 'axios';
+
+// Tworzymy instancję Axios z domyślną konfiguracją
+const apiClient = axios.create({
+  // URL bazowy naszego DANXILS_API. Proxy w vite.config.js zajmie się resztą.
+  baseURL: '/api', 
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  
+  // --- POPRAWKA: KONFIGURACJA DLA CSRF ---
+  // Umożliwia wysyłanie cookies i automatycznie dołącza token CSRF
+  withCredentials: true, 
+  xsrfCookieName: 'XSRF-TOKEN', 
+  xsrfHeaderName: 'X-XSRF-TOKEN', 
+});
+
+// Centralna obsługa błędów (zalecane w systemach enterprise)
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Tutaj można dodać globalną logikę obsługi błędów,
+    // np. wylogowanie użytkownika przy błędzie 401 Unauthorized
+    // lub przekierowanie na stronę błędu przy 500.
+    console.error('Błąd wywołania API:', error.response ? `${error.response.status}: ${error.response.data}` : error.message);
+    
+    // Zwracamy odrzuconą obietnicę, aby błąd mógł być obsłużony dalej
+    // w miejscu wywołania (np. w komponencie Vue).
+    return Promise.reject(error);
+  }
+);
+
+// UWAGA: Zmieniamy sposób eksportu. 
+// Eksportujemy bezpośrednio skonfigurowaną instancję `apiClient`.
+// Dzięki temu w innych plikach (np. authStore.js) można jej używać
+// do wszystkich typów zapytań (POST, GET, PUT etc.)
+// np. `import apiClient from '@/services/api'`
+// a potem `apiClient.post('/auth/login', credentials)`
+export default apiClient;
+
+
+================================================================================
+### PLIK: stores\addressUploadStore.js
+================================================================================
+
+import { defineStore } from 'pinia';
+import apiClient from '@/services/api';
+
+export const useAddressUploadStore = defineStore('addressUpload', {
+  state: () => ({
+    jobs: {}, // Będzie przechowywać statusy zadań, np. { 'jobId': { status: 'PROCESSING', ... } }
+    isLoading: false,
+    error: null,
+  }),
+  getters: {
+    // Getter do pobierania zadań jako posortowana lista (najnowsze pierwsze)
+    jobList: (state) => {
+      return Object.values(state.jobs).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    },
+  },
+  actions: {
+    async uploadFile(file) {
+      if (!file) {
+        this.error = 'No file selected.';
+        return;
+      }
+      this.isLoading = true;
+      this.error = null;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await apiClient.post('/api/address-upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        const { jobId } = response.data;
+        if (jobId) {
+          // Inicjalizuj status zadania i zacznij go śledzić
+          this.jobs[jobId] = {
+            jobId,
+            originalFilename: file.name,
+            status: 'PENDING',
+            progress: 0,
+            createdAt: new Date().toISOString()
+          };
+          this.pollJobStatus(jobId);
+        }
+      } catch (err) {
+        console.error('File upload failed:', err);
+        this.error = err.response?.data?.error || 'File upload failed.';
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async pollJobStatus(jobId) {
+      const intervalId = setInterval(async () => {
+        try {
+          const response = await apiClient.get(`/api/address-upload/jobs/${jobId}`);
+          const jobData = response.data;
+          
+          // Aktualizuj status zadania w store
+          this.jobs[jobId] = { ...this.jobs[jobId], ...jobData };
+
+          // Zatrzymaj śledzenie, jeśli status jest końcowy
+          if (['COMPLETED', 'FAILED_WITH_ERRORS'].includes(jobData.status)) {
+            clearInterval(intervalId);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch status for job ${jobId}:`, error);
+          this.jobs[jobId].status = 'POLLING_ERROR';
+          this.jobs[jobId].errorDetails = 'Could not fetch job status.';
+          clearInterval(intervalId);
+        }
+      }, 3000); // Sprawdzaj status co 3 sekundy
+    },
+  },
+});
+
+================================================================================
+### PLIK: stores\authStore.js
+================================================================================
+
+import { defineStore } from 'pinia';
+import apiService from '@/services/api'; // Zmieniono nazwę importu
+import router from '@/router';
+
+export const useAuthStore = defineStore('auth', {
+  state: () => ({
+    accessToken: localStorage.getItem('accessToken') || null,
+    refreshToken: localStorage.getItem('refreshToken') || null,
+    username: localStorage.getItem('username') || null,
+    roles: JSON.parse(localStorage.getItem('roles')) || [],
+    error: null,
+    isLoading: false,
+  }),
+  getters: {
+    isAuthenticated: (state) => !!state.accessToken,
+    isAdmin: (state) => state.roles.includes('ADMIN'),
+  },
+  actions: {
+    async login(credentials) {
+      this.isLoading = true;
+      this.error = null;
+      try {
+        // --- POPRAWKA: Użycie apiService.login ---
+        const response = await apiService.login(credentials);
+        
+        const { accessToken, refreshToken, username, roles } = response.data;
+        this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+        this.username = username;
+        this.roles = roles;
+
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem('username', username);
+        localStorage.setItem('roles', JSON.stringify(roles));
+
+        router.push('/');
+      } catch (err) {
+        this.error = err.response?.data?.error || err.response?.data?.message || 'Login failed';
+        throw err;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async refreshTokenAction() {
+      try {
+        // --- POPRAWKA: Użycie apiService.refreshToken ---
+        const response = await apiService.refreshToken(this.refreshToken);
+
+        const { accessToken } = response.data;
+        this.accessToken = accessToken;
+        localStorage.setItem('accessToken', accessToken);
+        return accessToken;
+      } catch (err) {
+        this.logout();
+        throw new Error('Session expired. Please log in again.');
+      }
+    },
+
+    logout() {
+      this.accessToken = null;
+      this.refreshToken = null;
+      this.username = null;
+      this.roles = [];
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('username');
+      localStorage.removeItem('roles');
+      router.push('/login');
+    },
+  },
+});
+
+
+================================================================================
+### PLIK: stores\errorStore.js
+================================================================================
+
+import axios from 'axios';
+
+const apiClient = axios.create({
+  // baseURL jest pusty, aby proxy z vite.config.js działało poprawnie
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Interceptor do dodawania tokena JWT - bez zmian
+apiClient.interceptors.request.use(
+  async (config) => {
+    try {
+      const { useAuthStore } = await import('@/stores/authStore');
+      const authStore = useAuthStore();
+      const token = authStore.accessToken;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (e) {
+      console.error('Error dynamically importing authStore in request interceptor:', e);
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Interceptor do odświeżania tokena - bez zmian
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    try {
+      const { useAuthStore } = await import('@/stores/authStore');
+      const authStore = useAuthStore();
+      if (error.response && error.response.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true;
+        try {
+          const newAccessToken = await authStore.refreshTokenAction();
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          return apiClient(originalRequest);
+        } catch (refreshError) {
+          return Promise.reject(refreshError);
+        }
+      }
+    } catch (e) {
+      console.error('Error dynamically importing authStore in response interceptor:', e);
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Obiekt serwisu API z predefiniowanymi metodami
+const apiService = {
+  // Metody autoryzacji
+  login(credentials) {
+    return apiClient.post('/auth/login', credentials);
+  },
+  refreshToken(refreshToken) {
+    return apiClient.post('/auth/refresh', { refreshToken });
+  },
+
+  // Metody związane z błędami
+  getProcessingErrors(params) {
+    return apiClient.get('/processing-errors', { params });
+  },
+  getErrorDetails(errorId) {
+    return apiClient.get(`/processing-errors/${errorId}`);
+  },
+  resubmitCorrectedOrder(eventId, resubmitPayload) {
+    return apiClient.post(`/processing-errors/${eventId}/resubmit`, resubmitPayload);
+  },
+
+  // Metody związane z weryfikacją adresów
+  getOnDemandSuggestions(addressQuery) {
+    return apiClient.post('/api/admin/address-verification/suggest-on-demand', addressQuery);
+  },
+  getOperationStatus(statusCheckUrl) {
+    // Używamy pełnego URL, a interceptor i tak doda token
+    return apiClient.get(statusCheckUrl);
+  },
+};
+
+export default apiService;
+
+
+
+================================================================================
+### PLIK: stores\invoicingRulesStore.js
+================================================================================
+
+import { defineStore } from 'pinia';
+import apiClient from '@/services/api.js'; // Using your existing API client [cite: 26, 30]
+
+export const useInvoicingRulesStore = defineStore('invoicingRules', {
+  state: () => ({
+    hubRules: [],
+    isLoading: false,
+    error: null,
+  }),
+  getters: {
+    // A getter to return rules, perhaps sorted by HUB name
+    sortedHubRules: (state) => {
+      return [...state.hubRules].sort((a, b) => a.hubId.localeCompare(b.hubId));
+    },
+  },
+  actions: {
+    async fetchHubRules() {
+      this.isLoading = true;
+      this.error = null;
+      try {
+        const response = await apiClient.get('/api/admin/invoicing-rules?ruleType=INTERIOR');
+        this.hubRules = response.data;
+      } catch (err) {
+        this.error = 'Failed to fetch HUB rules.';
+        console.error(err);
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async saveRule(rule) {
+      this.isLoading = true;
+      this.error = null;
+      try {
+        if (rule.id) {
+          // Update existing rule
+          await apiClient.put(`/api/admin/invoicing-rules/${rule.id}`, rule);
+        } else {
+          // Create new rule
+          await apiClient.post('/api/admin/invoicing-rules', rule);
+        }
+        // Refresh the list after saving
+        await this.fetchHubRules();
+      } catch (err) {
+        this.error = 'Failed to save rule.';
+        console.error(err);
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async deleteRule(ruleId) {
+      this.isLoading = true;
+      this.error = null;
+      try {
+        await apiClient.delete(`/api/admin/invoicing-rules/${ruleId}`);
+        // Refresh the list after deleting
+        await this.fetchHubRules();
+      } catch (err) {
+        this.error = 'Failed to delete rule.';
+        console.error(err);
+      } finally {
+        this.isLoading = false;
+      }
+    },
+  },
+});

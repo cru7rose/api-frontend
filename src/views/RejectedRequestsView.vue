@@ -12,8 +12,8 @@
                 class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors flex items-center disabled:opacity-50 disabled:cursor-wait">
                 <svg v-if="!isRecoveryLoading" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5m-4-1v-4h4"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9a9 9 0 0114.48-2.73M20 15a9 9 0 01-14.48 2.73"></path></svg>
                 <svg v-else class="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 <span>{{ isRecoveryLoading ? 'Przetwarzanie...' : 'Ponów Przetwarzanie' }}</span>
             </button>
@@ -26,8 +26,8 @@
             <div>
                 <label for="filterBarcode" class="block text-xs font-medium text-slate-600 mb-1">Kod Kreskowy:</label>
                 <input type="text" id="filterBarcode" v-model="localFilters.barcode" @input="applyFilterDebounced('barcode', $event.target.value)"
-                        class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm"
-                        placeholder="Wpisz kod...">
+                       class="p-2.5 w-full border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 text-sm"
+                       placeholder="Wpisz kod...">
             </div>
             <div>
                 <label for="filterErrorType" class="block text-xs font-medium text-slate-600 mb-1">Typ Błędu:</label>
@@ -81,22 +81,28 @@
             <tbody class="bg-white divide-y divide-slate-200">
                 <tr v-for="error in errorStore.rejectedRequests" :key="error.id" 
                     :class="[
-                      'transition duration-150 ease-in-out',
-                      error.errorType === 'ADDRESS_REPROCESSED' ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-slate-50/70'
+                        'transition duration-150 ease-in-out',
+                        error.resolutionStatus === 'RESOLVED' ? 'bg-green-100 text-slate-500 hover:bg-green-200' : 'hover:bg-slate-50'
                     ]">
-                    <td class="px-4 py-3 whitespace-nowrap text-xs text-slate-600 font-mono">{{ error.eventId.substring(0,8) }}...</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.requestID || 'N/A' }}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.barcode || 'N/A' }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-xs font-mono">{{ error.eventId.substring(0,8) }}...</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm">{{ error.requestID || 'N/A' }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm">{{ error.barcode || 'N/A' }}</td>
                     <td class="px-4 py-3 whitespace-nowrap text-sm">
-                        <span :class="getErrorTypeClassForTable(error.errorType)">{{ error.errorType || 'N/A' }}</span>
+                        <span :class="getErrorTypeClassForTable(error.errorType, error.resolutionStatus)">{{ error.errorType || 'N/A' }}</span>
                     </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{{ error.addressVerificationStatus || 'N/A' }}</td>
-                    <td class="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" :title="error.errorMessage">
+                    <td class="px-4 py-3 whitespace-nowrap text-sm">
+                        <span v-if="error.resolutionStatus === 'RESOLVED'" class="px-2 py-0.5 rounded-full text-xs font-semibold inline-block leading-tight bg-green-200 text-green-800">
+                            ADRES DODANY
+                        </span>
+                        <span v-else>{{ error.addressVerificationStatus || 'N/A' }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-sm max-w-sm truncate" :title="error.errorMessage">
                         {{ error.errorMessage ? error.errorMessage.substring(0, 70) + (error.errorMessage.length > 70 ? '...' : '') : 'Brak' }}
                     </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDateForTable(error.createdAt) }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm">{{ formatDateForTable(error.createdAt) }}</td>
                     <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                        <button @click="openErrorDetailsModal(error)" class="text-indigo-600 hover:text-indigo-800 font-semibold hover:underline text-xs">Szczegóły</button>
+                        <button v-if="error.resolutionStatus !== 'RESOLVED'" @click="openErrorDetailsModal(error)" class="text-indigo-600 hover:text-indigo-800 font-semibold hover:underline text-xs">Szczegóły</button>
+                        <span v-else class="text-xs text-slate-400">Rozwiązany</span>
                     </td>
                 </tr>
             </tbody>
@@ -209,9 +215,9 @@ const sortIcon = (field) => {
   return '';
 };
 
-const getErrorTypeClassForTable = (errorType) => {
+const getErrorTypeClassForTable = (errorType, resolutionStatus) => {
     let base = 'px-2 py-0.5 rounded-full text-xs font-semibold inline-block leading-tight ';
-    if (errorType === 'ADDRESS_REPROCESSED') return base + 'bg-green-100 text-green-800 border border-green-300';
+    if (resolutionStatus === 'RESOLVED') return base + 'bg-green-100 text-green-800 border border-green-300';
     if (['DELIVERY_ADDRESS_ALIAS_MISSING', 'PICKUP_ADDRESS_ALIAS_MISSING', 'ADDRESS_ALIAS_MISMATCH_DB', 'ADDRESS_PROVIDER_NEEDS_REVIEW', 'ADDRESS_PROVIDER_INVALID'].includes(errorType)) return base + 'bg-orange-100 text-orange-600 border border-orange-200';
     if (errorType === 'ADDRESS_CUSTOMER_VERIFICATION_PENDING') return base + 'bg-yellow-100 text-yellow-600 border border-yellow-200';
     if (['VALIDATION', 'CONSTRAINT_VIOLATION', 'DESERIALIZATION_ERROR'].includes(errorType)) return base + 'bg-red-100 text-red-600 border border-red-200';

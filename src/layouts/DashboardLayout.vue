@@ -1,125 +1,69 @@
-<template>
-  <div class="min-h-screen bg-slate-100 flex antialiased">
-    <Sidebar :is-open="isSidebarEffectivelyOpen" @toggle-sidebar="toggleSidebarPreference" />
-
-    <div
-      class="flex-1 flex flex-col transition-all duration-300 ease-in-out"
-      :style="{ 'margin-left': contentMarginLeft }"
-    >
-      <header class="bg-white shadow-sm sticky top-0 z-30 print:hidden">
-        <div class="px-4 sm:px-6 lg:px-8">
-          <div class="flex items-center justify-between h-16">
-            <div class="flex items-center">
-              <button
-                @click="toggleSidebarPreference"
-                class="text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 p-2 -ml-2 rounded-md"
-                aria-label="Toggle sidebar"
-              >
-                <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            </div>
-            <div class="flex items-center">
-              <span class="text-sm text-slate-700 mr-3 hidden sm:block">
-                Witaj, {{ authStore.user?.username || 'Użytkowniku' }}
-              </span>
-              <button
-                @click="performUserLogout"
-                class="text-sm font-medium text-indigo-600 hover:text-indigo-500 p-2 rounded-md hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Wyloguj
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main class="flex-1 p-4 sm:p-6 lg:p-8">
-        <router-view />
-      </main>
-
-      <footer class="bg-slate-100 text-center p-4 border-t border-slate-200 text-xs text-slate-500 print:hidden">
-        &copy; {{ new Date().getFullYear() }} Danxils Enterprise System
-      </footer>
-    </div>
-  </div>
-</template>
-
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import Sidebar from '@/components/Sidebar.vue';
 import { useAuthStore } from '@/stores/authStore';
+import { useRouter } from 'vue-router';
 
 const authStore = useAuthStore();
 const router = useRouter();
 
-const screenWidth = ref(window.innerWidth);
-const userPrefersSidebarOpen = ref(true); // Preferencja użytkownika (np. z localStorage)
-
-const isLargeScreen = computed(() => screenWidth.value >= 1024); // lg breakpoint
-
-const isSidebarEffectivelyOpen = computed(() => {
-  // Na małych ekranach, sidebar jest mobilnym overlayem, jego "otwarcie" jest kontrolowane przez userPrefersSidebarOpen
-  // Na dużych ekranach, sidebar jest zawsze "obecny" (albo szeroki albo wąski), kontrolowany przez userPrefersSidebarOpen
-  return userPrefersSidebarOpen.value;
-});
-
-const sidebarCollapsedWidth = '4rem'; // 64px (w-16)
-const sidebarExpandedWidth = '16rem'; // 256px (w-64)
-
-const contentMarginLeft = computed(() => {
-  if (isLargeScreen.value) {
-    // Na dużych ekranach, content ma margines w zależności od stanu sidebara
-    return userPrefersSidebarOpen.value ? sidebarExpandedWidth : sidebarCollapsedWidth;
-  }
-  // Na małych ekranach, sidebar jest nakładką (fixed, absolute), więc content nie potrzebuje marginesu
-  return '0px';
-});
-
-const toggleSidebarPreference = () => {
-  userPrefersSidebarOpen.value = !userPrefersSidebarOpen.value;
-  if (isLargeScreen.value) {
-    localStorage.setItem('sidebarUserPrefersOpen', JSON.stringify(userPrefersSidebarOpen.value));
-  }
-};
-
-const performUserLogout = () => {
+const handleLogout = () => {
   authStore.logout();
-  router.push('/login');
 };
 
-const updateScreenWidth = () => {
-  screenWidth.value = window.innerWidth;
-  // Dostosuj domyślny stan sidebara przy zmianie rozmiaru ekranu, jeśli preferencja nie była ustawiona
-  if (localStorage.getItem('sidebarUserPrefersOpen') === null) {
-    if (isLargeScreen.value) {
-      userPrefersSidebarOpen.value = true; // Domyślnie otwarty na dużych
-    } else {
-      userPrefersSidebarOpen.value = false; // Domyślnie zamknięty na małych
-    }
-  }
-};
+// Podstawowa nawigacja na podstawie router/index.js
+const adminNavLinks = [
+  { name: 'Dashboard', path: '/dashboard' },
+  { name: 'Change Password', path: '/dashboard/change-password' },
+  { name: 'Order Statuses', path: '/dashboard/order-statuses' },
+  { name: 'Rejected Requests', path: '/dashboard/rejected-requests', admin: true },
+  { name: 'Status Export', path: '/dashboard/status-export', admin: true },
+  { name: 'Address Providers', path: '/dashboard/admin/address-providers', admin: true },
+  { name: 'Recently Added', path: '/dashboard/recently-added-addresses', admin: true },
+  { name: 'Address Upload', path: '/dashboard/admin/address-upload', admin: true },
+  { name: 'HUB Invoicing Rules', path: '/dashboard/hub-invoicing-rules', admin: true },
+];
 
-onMounted(() => {
-  const storedPreference = localStorage.getItem('sidebarUserPrefersOpen');
-  if (storedPreference !== null) {
-    userPrefersSidebarOpen.value = JSON.parse(storedPreference);
-  } else {
-    // Ustaw domyślny stan na podstawie początkowej szerokości ekranu
-    userPrefersSidebarOpen.value = isLargeScreen.value;
-  }
-  window.addEventListener('resize', updateScreenWidth);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('resize', updateScreenWidth);
-});
 </script>
 
+<template>
+  <div class="flex h-screen bg-gray-100 font-sans">
+    <aside class="w-64 flex-shrink-0 bg-gray-800 text-white flex flex-col">
+      <div class="h-16 flex items-center justify-center text-2xl font-bold border-b border-gray-700">
+        Admin Panel
+      </div>
+      <nav class="flex-1 px-4 py-4 space-y-2">
+        <template v-for="link in adminNavLinks" :key="link.path">
+            <router-link
+              v-if="!link.admin || authStore.isAdmin"
+              :to="link.path"
+              class="flex items-center px-4 py-2 rounded-md hover:bg-gray-700 transition-colors"
+              active-class="bg-gray-900"
+            >
+              {{ link.name }}
+            </router-link>
+        </template>
+      </nav>
+      <div class="px-4 py-4 border-t border-gray-700">
+        <div class="text-sm text-gray-400 mb-2">Logged in as: <strong>{{ authStore.username }}</strong></div>
+        <button
+          @click="handleLogout"
+          class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors"
+        >
+          Logout
+        </button>
+      </div>
+    </aside>
+
+    <main class="flex-1 p-8 overflow-y-auto">
+      <div class="max-w-7xl mx-auto">
+        <router-view />
+      </div>
+    </main>
+  </div>
+</template>
+
 <style scoped>
-.flex-1 {
-  transition: margin-left 0.25s ease-in-out;
+/* Scoped styles for the layout */
+.router-link-exact-active {
+  background-color: #1a202c; /* bg-gray-900 */
 }
 </style>

@@ -1,55 +1,35 @@
-// src/services/api.js
-import axios from 'axios';
+/**
+ * ARCHITECTURE: Axios singleton configured to cooperate with the Vite proxy in development.
+ * Responsibilities:
+ * - Use baseURL from env; when set to "/" (recommended for dev), requests are same-origin and get proxied.
+ */
+import axios from "axios";
 
-const apiClient = axios.create({
-  baseURL: 'https://api.danxils.com',
+function resolveBaseUrl() {
+  const w = typeof window !== "undefined" ? window : {};
+  const winBase = (w.__API_BASE_URL__ || "").trim();
+  const viteBase = (import.meta?.env?.VITE_API_BASE_URL || "").trim();
+  const base = (winBase || viteBase);
+  if (!base) return "/";          // default to same-origin → dev proxy handles cross-origin
+  if (base === "/") return "/";   // explicit proxy mode
+  return base.replace(/\/+$/, "");
+}
+
+const api = axios.create({
+  baseURL: resolveBaseUrl(),
+  withCredentials: true,
   headers: {
-    'Content-Type': 'application/json',
+    "Accept": "application/json",
+    "Content-Type": "application/json",
   },
 });
 
-apiClient.interceptors.request.use(
-  async (config) => {
-    try {
-      const { useAuthStore } = await import('@/stores/authStore');
-      const authStore = useAuthStore();
-      const token = authStore.accessToken;
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (e) {
-      console.error('Error dynamically importing authStore in request interceptor:', e);
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    err.message = err?.response?.data?.message || err.message || "Request failed";
+    return Promise.reject(err);
   }
 );
 
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    try {
-      const { useAuthStore } = await import('@/stores/authStore');
-      const authStore = useAuthStore();
-
-      if (error.response && error.response.status === 401 && !originalRequest._retry) {
-        originalRequest._retry = true;
-        try {
-          const newAccessToken = await authStore.refreshTokenAction();
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-          return apiClient(originalRequest);
-        } catch (refreshError) {
-          return Promise.reject(refreshError);
-        }
-      }
-    } catch (e) {
-      console.error('Error dynamically importing authStore in response interceptor:', e);
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default apiClient;
+export default api;

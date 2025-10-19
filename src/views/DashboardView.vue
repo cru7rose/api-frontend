@@ -1,23 +1,11 @@
+<script setup>
+import { useAuthStore } from '@/stores/authStore';
+const authStore = useAuthStore();
+</script>
+
 <template>
-  <div class="bg-white p-8 rounded-lg shadow-md">
-    <h1 v-if="authStore.user" class="text-3xl font-bold text-gray-800 mb-4">
-      Witaj na Dashboardzie, {{ authStore.user.username }}!
-    </h1>
-    <p class="text-gray-600">To jest chroniona zawartość.</p>
-    <p class="mt-4">Twój Access Token (fragment): <code class="bg-gray-200 p-1 rounded text-sm">{{ shortAccessToken }}</code></p>
+  <div>
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome, {{ authStore.username }}!</h1>
+    <p class="text-gray-600">This is your main dashboard. Select an option from the sidebar to get started.</p>
   </div>
 </template>
-
-<script setup>
-import { computed } from 'vue'
-import { useAuthStore } from '@/stores/authStore';
-
-const authStore = useAuthStore()
-
-const shortAccessToken = computed(() => {
-  if (authStore.accessToken) {
-    return authStore.accessToken.substring(0, 20) + '...'
-  }
-  return 'Brak tokenu'
-})
-</script>

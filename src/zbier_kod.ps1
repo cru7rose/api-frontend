@@ -2,7 +2,7 @@
 # #############################################################################
 
 # Nazwa pliku, w którym zostanie zapisany cały kod.
-$plikWyjsciowy = "Zebrany_Kod_Maven_Projektu.txt"
+$plikWyjsciowy = "frontend.txt"
 
 # Rozszerzenia plików i konkretne nazwy plików, które mają zostać uwzględnione.
 # Ta lista jest dostosowana do projektu Maven - pominięto pliki Gradle.

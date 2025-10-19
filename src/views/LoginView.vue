@@ -1,80 +1,48 @@
 <template>
-  <div class="flex items-center justify-center min-h-[calc(100vh-200px)]">
-    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-      <h2 class="text-3xl font-bold text-center text-indigo-600 mb-8">Logowanie</h2>
-      <form @submit.prevent="handleLogin">
-        <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 text-red-700 rounded-md border border-red-200">
-          {{ errorMessage }}
-        </div>
-        <div class="mb-6">
-          <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Nazwa użytkownika</label>
-          <input
-            type="text"
-            id="username"
-            v-model="username"
-            required
-            class="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-            placeholder="username"
-          />
-        </div>
-        <div class="mb-6">
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Hasło</label>
-          <input
-            type="password"
-            id="password"
-            v-model="password"
-            required
-            class="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-            placeholder="••••••••"
-          />
-        </div>
-        <div>
-          <button
-            type="submit"
-            :disabled="isLoading"
-            class="w-full flex items-center justify-center py-2.5 px-4 border border-transparent rounded-md shadow-lg text-base font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all duration-200"
-          >
-            <span v-if="isLoading" class="animate-spin mr-2 h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
-            Zaloguj
-          </button>
-        </div>
-      </form>
-    </div>
+  <div class="min-h-screen flex items-center justify-center p-6">
+    <form class="w-full max-w-sm space-y-4" @submit.prevent="submit">
+      <h1 class="text-2xl font-semibold">Sign in</h1>
+      <div>
+        <label class="block text-sm mb-1">Username</label>
+        <input v-model="username" class="w-full border rounded p-2" autocomplete="username" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Password</label>
+        <input v-model="password" type="password" class="w-full border rounded p-2" autocomplete="current-password" />
+      </div>
+      <button class="w-full rounded p-2 border hover:bg-gray-50" :disabled="busy">
+        {{ busy ? 'Signing in…' : 'Sign in' }}
+      </button>
+      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    </form>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
+import { useRouter, useRoute } from 'vue-router';
 
-const username = ref('')
-const password = ref('')
-const authStore = useAuthStore()
-const router = useRouter()
-const isLoading = ref(false)
-const errorMessage = ref('')
+const auth = useAuthStore();
+const router = useRouter();
+const route = useRoute();
 
-const handleLogin = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
+const username = ref('admin');
+const password = ref('pass');
+const busy = ref(false);
+const error = ref('');
+
+const submit = async () => {
+  error.value = '';
+  busy.value = true;
   try {
-    await authStore.login({ username: username.value, password: password.value })
-    router.push('/dashboard')
-  } catch (error) {
-    errorMessage.value = error.message || 'Logowanie nie powiodło się. Sprawdź dane lub spróbuj później.'
-    console.error('Login failed:', error)
+    await auth.login({ username: username.value, password: password.value });
+    const redirect = route.query.r || '/dashboard';
+    router.push(String(redirect));
+  } catch (e) {
+    error.value = e?.message || 'Login failed';
   } finally {
-    isLoading.value = false
+    busy.value = false;
   }
-}
+};
 </script>
-<style scoped>
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-</style>
