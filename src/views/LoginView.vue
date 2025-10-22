@@ -1,48 +1,55 @@
+<!--
+ARCHITECTURE: LoginView authenticates via AuthController and redirects to the intended route.
+It follows the manifesto by delegating auth logic to the controller and keeping UI declarative.
+Responsibilities:
+- Collect credentials, call auth.login(), then navigate to ?r=... or /dashboard.
+-->
 <template>
-  <div class="min-h-screen flex items-center justify-center p-6">
-    <form class="w-full max-w-sm space-y-4" @submit.prevent="submit">
-      <h1 class="text-2xl font-semibold">Sign in</h1>
-      <div>
-        <label class="block text-sm mb-1">Username</label>
-        <input v-model="username" class="w-full border rounded p-2" autocomplete="username" />
-      </div>
-      <div>
-        <label class="block text-sm mb-1">Password</label>
-        <input v-model="password" type="password" class="w-full border rounded p-2" autocomplete="current-password" />
-      </div>
-      <button class="w-full rounded p-2 border hover:bg-gray-50" :disabled="busy">
-        {{ busy ? 'Signing in…' : 'Sign in' }}
-      </button>
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+  <section class="login">
+    <header><h1>Sign in</h1></header>
+    <form @submit.prevent="onSubmit">
+      <label>Username <input v-model="username" autocomplete="username" /></label>
+      <label>Password <input v-model="password" type="password" autocomplete="current-password" /></label>
+      <button :disabled="busy" type="submit">{{ busy ? 'Signing in…' : 'Sign in' }}</button>
+      <p v-if="err" class="err">{{ err }}</p>
     </form>
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { useAuthStore } from '@/stores/authStore';
-import { useRouter, useRoute } from 'vue-router';
+import { inject, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
-const auth = useAuthStore();
-const router = useRouter();
+const auth = inject("auth"); // provided in main.js
 const route = useRoute();
+const router = useRouter();
 
-const username = ref('admin');
-const password = ref('pass');
+const username = ref("admin");
+const password = ref("pass");
 const busy = ref(false);
-const error = ref('');
+const err = ref("");
 
-const submit = async () => {
-  error.value = '';
+async function onSubmit() {
+  err.value = "";
   busy.value = true;
   try {
-    await auth.login({ username: username.value, password: password.value });
-    const redirect = route.query.r || '/dashboard';
-    router.push(String(redirect));
+    const r = await auth.login(username.value, password.value);
+    if (!r.ok) throw r.error || new Error("Login failed");
+    const go = String(route.query.r || "/dashboard");
+    router.push(go);
   } catch (e) {
-    error.value = e?.message || 'Login failed';
+    err.value = e?.message || "Login failed";
   } finally {
     busy.value = false;
   }
-};
+}
 </script>
+
+<style scoped>
+.login { max-width: 420px; margin: 8vh auto; padding: 16px; border: 1px solid #eee; border-radius: 8px; background: #fff; display: grid; gap: 12px; }
+form { display: grid; gap: 10px; }
+label { display: grid; gap: 4px; font-size: 12px; }
+input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+button { padding: 8px 10px; font-size: 14px; }
+.err { color: #c0392b; margin: 0; }
+</style>

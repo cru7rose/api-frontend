@@ -1,45 +1,60 @@
 /**
- * ARCHITECTURE: main.js mounts App.vue with router and pinia, and emits probe breadcrumbs.
- * It follows the manifesto by ensuring a visible shell renders even if routes fail.
+ * ARCHITECTURE: main.js mounts App.vue, installs Pinia + Router, and provides DI singletons.
  * Responsibilities:
- * - Install Pinia, build router, mount App, and log deterministic startup milestones.
+ * - Create AuthController and provide it under the 'auth' key so views (LoginView) can call auth.login().
+ * - Bootstrap environment (orchestrator, googleKey, health) and provide them as well.
  */
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "@/App.vue";
 import { createRouterWithKey } from "@/router/index";
 import { AppBootstrapController } from "@/controllers/AppBootstrapController";
-import { StartupProbe } from "@/debug/StartupProbe";
+import { AuthController } from "@/controllers/AuthController";
 
+// Use an async IIFE to allow top-level await for bootstrap
 (async () => {
-  const probe = new StartupProbe();
-  probe.mark("init:begin");
+    const pinia = createPinia();
 
-  const pinia = createPinia();
-  probe.mark("pinia:ready");
+    // Initialize authentication controller and load any existing session
+    const auth = new AuthController();
+    auth.hydrateFromStorage();
 
-  const bootstrap = new AppBootstrapController();
-  const boot = await bootstrap.bootstrap();
-  probe.mark("bootstrap:done");
+    // Bootstrap application configuration and health checks
+    const bootstrap = new AppBootstrapController();
+    const boot = await bootstrap.bootstrap();
 
-  const router = createRouterWithKey(boot.googleKey);
-  probe.mark("router:created");
+    // Create router instance, potentially passing config like Google API key
+    const router = createRouterWithKey(boot.googleKey);
 
-  const app = createApp(App);
+    // Create the main Vue application instance
+    const app = createApp(App);
 
-  app.config.errorHandler = (err) => {
-    console.error("[vue-error]", err);
-    probe.mark(`vue-error:${err?.message || err}`);
-  };
-  window.addEventListener("error", (e) => {
-    console.error("[window-error]", e?.error || e?.message || e);
-    probe.mark(`window-error:${e?.message || e}`);
-  });
+    // Global Vue error handler
+    app.config.errorHandler = (err, instance, info) => {
+        // eslint-disable-next-line no-console
+        console.error("[vue-error]", err, info, instance);
+    };
+    // Global window error handler for unhandled promise rejections etc.
+    window.addEventListener("error", (e) => {
+        // eslint-disable-next-line
+        console.error("[window-error]", e?.error || e?.message || e);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+        // eslint-disable-next-line no-console
+        console.error("[unhandled-rejection]", e?.reason || e);
+    });
 
-  app.use(pinia);
-  app.use(router);
-  probe.mark("plugins:used");
 
-  app.mount("#app");
-  probe.mark("mounted");
+    // Install plugins
+    app.use(pinia);
+    app.use(router);
+
+    // Dependency Injection: Provide shared instances to components
+    app.provide("auth", auth); // Make AuthController available
+    app.provide("orchestrator", boot.orchestrator); // Make main orchestrator available
+    app.provide("googleKey", boot.googleKey); // Provide Google API Key
+    app.provide("health", boot.health); // Provide health status
+
+    // Mount the application to the DOM
+    app.mount("#app");
 })();
