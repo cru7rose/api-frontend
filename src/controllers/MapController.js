@@ -1,15 +1,12 @@
 /**
  * ARCHITECTURE: MapController coordinates a map adapter to create a map, update its marker, and recenter.
- * It follows the manifesto by hiding vendor API behind a minimal surface tailored to the editor workflow.
- * Responsibilities:
- * - Initialize the map, move the marker to a coordinate, and recenter with optional zoom changes.
- * - Provide idempotent destroy() to free resources on route leave.
+ * REFACTORED: Now supports distinct pickup/delivery markers and route drawing.
  */
 export class MapController {
   constructor(mapAdapter) {
     this.adapter = mapAdapter;
     this._container = null;
-    this._center = { lat: 52.2297, lon: 21.0122, zoom: 12 };
+    this._center = { lat: 52.2297, lon: 21.0122, zoom: 6 };
     this._ready = false;
   }
 
@@ -22,15 +19,36 @@ export class MapController {
     return true;
   }
 
+  // *** MODIFIED: This legacy method now controls the PICKUP marker ***
   async updateMarker(lat, lon, recenter = false) {
+    return this.updatePickupMarker(lat, lon, recenter);
+  }
+
+  // *** NEW METHODS ***
+  async updatePickupMarker(lat, lon, zoomTo = false) {
     if (!this._ready) throw new Error("MapController: map not initialized.");
-    await this.adapter.setMarker(lat, lon);
-    if (recenter) {
-      await this.adapter.setCenter(lat, lon, this._center.zoom);
-      this._center = { ...this._center, lat, lon };
-    }
+    await this.adapter.setPickupMarker(lat, lon, zoomTo);
+    if(zoomTo) this._center = { ...this._center, lat, lon };
     return true;
   }
+
+  async updateDeliveryMarker(lat, lon, zoomTo = false) {
+    if (!this._ready) throw new Error("MapController: map not initialized.");
+    await this.adapter.setDeliveryMarker(lat, lon, zoomTo);
+    if(zoomTo) this._center = { ...this._center, lat, lon };
+    return true;
+  }
+
+  async drawRouteAndFit(pickupPos, deliveryPos) {
+    if (!this._ready) throw new Error("MapController: map not initialized.");
+    if (!pickupPos || !deliveryPos) return false;
+
+    const routeDrawn = await this.adapter.drawRoute(pickupPos, deliveryPos);
+    const boundsFitted = await this.adapter.fitBounds(pickupPos, deliveryPos);
+
+    return routeDrawn && boundsFitted;
+  }
+  // *** END NEW METHODS ***
 
   async recenter(zoom) {
     if (!this._ready) throw new Error("MapController: map not initialized.");

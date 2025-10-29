@@ -1,162 +1,116 @@
 /**
- * ARCHITECTURE: AddressVerificationController orchestrates Google-first verification and TES-backed suggestions.
- * It follows the manifesto by isolating IO, retries, and provider alignment (set GOOGLE) behind simple methods.
- * Responsibilities:
- * - Ensure TES provider is set to GOOGLE via admin API proxy (asynchronously).
- * - Trigger on-demand suggestions and search-by-name via DANXILS-API proxy (Kafka-based flow) and poll operation status.
- * - Perform instant client-side geocode with Google for live map feedback.
- * - Merge and return a unified suggestion list and a normalized best candidate for the Editor.
+ * ARCHITECTURE: Coordinates address form field interactions and triggers realtime verification.
+ * REFACTORED: Constructor aligned with RealtimeVerificationOrchestrator dependencies.
+ * This class requires (geoRuntime, geocodeWithCacheController, mapController) to be injected.
+ * NOTE: This file appears to be a duplicate of AddressFormController.js and exports
+ * the same class name. Both files have been corrected to the same implementation.
  */
-import apiClient from "@/services/api";
-import { GoogleMapsScriptLoader } from "@/adapters/GoogleMapsScriptLoader";
-import { GoogleGeocodingAdapter } from "@/adapters/GoogleGeocodingAdapter";
-import { TesOperationPoller } from "@/services/TesOperationPoller";
-import { ProviderGuard } from "@/controllers/ProviderGuard";
+import { AddressInputMaskService } from "@/services/AddressInputMaskService";
+import { AddressFieldGuard } from "@/services/AddressFieldGuard";
+import { VerificationGuardController } from "@/controllers/VerificationGuardController";
+import { RealtimeVerificationOrchestrator } from "@/controllers/RealtimeVerificationOrchestrator";
+import { MapViewportPolicyController } from "@/controllers/MapViewportPolicyController";
+import { ValidationService } from "@/services/ValidationService";
+import { AddressNormalizer } from "@/services/AddressNormalizer";
 
-export class AddressVerificationController {
-    constructor(poller = new TesOperationPoller(), providerGuard = new ProviderGuard(poller)) {
-        this._google = null;
-        this._mapsLoader = new GoogleMapsScriptLoader();
-        this._geocoder = null;
-        this._poller = poller;
-        this._providerGuard = providerGuard;
+export class AddressFormController {
+    constructor(
+        geoRuntime, // *** Injected GeoRuntime ***
+        geocodeWithCacheController, // Geocode controller (uses Nominatim/Google adapter)
+        mapController // Map controller (uses Leaflet/Google adapter)
+    ) {
+        if (!geoRuntime || !geocodeWithCacheController || !mapController) {
+            const missing = [!geoRuntime && "geoRuntime", !geocodeWithCacheController && "geocodeWithCacheController", !mapController && "mapController"].filter(Boolean).join(', ');
+            log.error(`[AddressFormController-Verification] CRITICAL: Missing required dependencies in constructor: ${missing}.`);
+            // This controller is often instantiated by a view; throwing might be too harsh.
+        }
+
+        this.mask = new AddressInputMaskService("PL");
+        this.guard = new AddressFieldGuard();
+        this.verifyGuard = new VerificationGuardController();
+
+        // *** FIX: Instantiate orchestrator with correct (geoRuntime, geocodeController, debounce) ***
+        this.realtime = new RealtimeVerificationOrchestrator(
+            geoRuntime,
+            geocodeWithCacheController,
+            300 // Debounce time
+        );
+        this.viewport = new MapViewportPolicyController(mapController);
+        this.validator = new ValidationService("PL");
+        this.normalizer = new AddressNormalizer();
+        this.input = { street: "", houseNumber: "", postalCode: "", city: "", country: "PL" };
+        this.validation = { valid: false, errors: {} };
+        this.instant = null;
+        this.suggestions = [];
         this.loading = false;
         this.error = null;
     }
 
-    /** @deprecated Provider alignment is now handled asynchronously by ProviderGuard.ensureGoogle(). */
-    async alignProviderToGoogle() {
-        console.warn("AddressVerificationController.alignProviderToGoogle is deprecated. Use ProviderGuard.ensureGoogle().");
-        try {
-            await this._providerGuard.ensureGoogle();
-            return true;
-        } catch (e) {
-            this.error = e.message;
-            return false;
-        }
+    setField(field, value) {
+        if (!this.guard.canEdit(field, { country: this.input.country })) return this.snapshot();
+
+        if (field === "postalCode") this.input.postalCode = this.mask.maskPostal(value, this.input.country);
+        else if (field === "street") this.input.street = this.mask.maskStreet(value);
+        else if (field === "city") this.input.city = this.mask.maskCity(value);
+        else if (field === "houseNumber") this.input.houseNumber = this.mask.maskHouseNo(value);
+        else if (field === "country") this.input.country = String(value || "PL").toUpperCase();
+        else this.input[field] = value;
+
+        this.verifyIfReady(); // No await needed, runs async
+        return this.snapshot(); // Return current state immediately
     }
 
-    async initGoogle(apiKey, libraries = ["geocoding"]) {
-        if (this._google) return true;
-        try {
-            this._google = await this._mapsLoader.load(apiKey, libraries);
-            this._geocoder = new GoogleGeocodingAdapter(this._google);
-            return true;
-        } catch (e) {
-            this.error = `Failed to initialize Google Maps: ${e.message}`;
-            console.error(this.error, e);
-            throw e;
-        }
-    }
+    async verifyIfReady() {
+        const gate = this.verifyGuard.shouldVerify(this.input);
+        const currentNormalized = this.normalizer.normalize(this.input);
+        this.validation = this.validator.validate(currentNormalized);
 
-    async geocodeInstant(addressDto) {
-        if (!this._geocoder) throw new Error("Google geocoder not initialized.");
-        try {
-            return await this._geocoder.geocodeAddress(addressDto);
-        } catch (e) {
-            console.error("Instant geocoding failed:", e);
-            return null;
+        if (!gate.allow) {
+            log.debug("[AddressForm-Verification] Verification skipped:", gate.reason, gate.missing);
+            this.loading = false;
+            this.error = null;
+            this.instant = null;
+            this.suggestions = [];
+            return this.snapshot();
         }
-    }
 
-    async suggestOnDemand(addressQuery) {
-        if (!addressQuery || Object.values(addressQuery).every(v => !v)) return [];
         this.loading = true;
         this.error = null;
         try {
-            const startResponse = await apiClient.post("/api/admin/address-verification/suggest-on-demand", addressQuery);
-            const correlationId = startResponse?.data?.correlationId;
-            if (!correlationId) throw new Error("Missing correlationId from suggest-on-demand initiation.");
+            const res = await this.realtime.verify(this.input);
+            this.instant = res.instant || null;
+            this.suggestions = Array.isArray(res.suggestions) ? res.suggestions : [];
 
-            const operationResult = await this._poller.waitFor(correlationId);
-
-            if (operationResult.status === "COMPLETED") {
-                const resultPayload = operationResult.result || {};
-                return resultPayload.suggestions || [];
-            } else {
-                throw new Error(operationResult.errorDetails || "Suggestion operation failed.");
+            if (this.instant && this.instant.latitude != null && this.instant.longitude != null && this.viewport) {
+                await this.viewport.focusInstant({ ...this.instant, matchLevel: "GEOCODER" });
             }
-        } catch (e) {
-            console.error("Suggest-on-demand flow failed:", e);
-            this.error = e.message;
-            return [];
+        } catch (err) {
+            log.error("[AddressForm-Verification] Realtime verification failed:", err);
+            this.error = "Verification failed.";
+            this.instant = null;
+            this.suggestions = [];
         } finally {
             this.loading = false;
         }
+
+        return this.snapshot();
     }
 
-    async searchByName(query) {
-        if (!query || !query.trim()) return [];
-        this.loading = true;
-        this.error = null;
-        try {
-            const startResponse = await apiClient.post("/api/admin/address-verification/search-by-name", query.trim(), {
-                headers: { "Content-Type": "text/plain" },
-            });
-            const correlationId = startResponse?.data?.correlationId;
-            if (!correlationId) throw new Error("Missing correlationId from search-by-name initiation.");
-
-            const operationResult = await this._poller.waitFor(correlationId);
-
-            if (operationResult.status === "COMPLETED") {
-                const resultPayload = operationResult.result || {};
-                return resultPayload.suggestions || [];
-            } else {
-                throw new Error(operationResult.errorDetails || "Search-by-name operation failed.");
-            }
-        } catch (e) {
-            console.error("Search-by-name flow failed:", e);
-            this.error = e.message;
-            return [];
-        } finally {
-            this.loading = false;
-        }
-    }
-
-    async verifyAddressFlow(googleApiKey, addressDto) {
-        this.loading = true;
-        this.error = null;
-        try {
-            await this._providerGuard.ensureGoogle();
-            await this.initGoogle(googleApiKey, ["geocoding", "places"]);
-            const instantResult = await this.geocodeInstant(addressDto);
-            const backendSuggestions = await this.suggestOnDemand({
-                street: addressDto.street || "",
-                houseNumber: addressDto.houseNumber || "",
-                postalCode: addressDto.postalCode || "",
-                city: addressDto.city || "",
-                country: addressDto.country || "PL",
-            });
-            const mergedSuggestions = this._mergeSuggestions(instantResult, backendSuggestions);
-            return { instant: instantResult, suggestions: mergedSuggestions };
-        } catch (e) {
-            this.error = e?.message || "Verification flow failed.";
-            console.error("verifyAddressFlow failed:", e);
-            throw e;
-        } finally {
-            this.loading = false;
-        }
-    }
-
-    _mergeSuggestions(instant, backendList) {
-        const list = Array.isArray(backendList) ? [...backendList] : [];
-        const fromInstant = instant ? {
-            fullAddressLabel: `${instant.street || ""} ${instant.houseNumber || ""}, ${instant.postalCode || ""} ${instant.city || ""}`.replace(/ ,|,$/,'').trim(),
-            street: instant.street || null,
-            houseNumber: instant.houseNumber || null,
-            postalCode: instant.postalCode || null,
-            city: instant.city || null,
-            countryCode: instant.country || null,
-            latitude: instant.latitude ?? null,
-            longitude: instant.longitude ?? null,
-            matchScore: 1.0,
-            matchLevel: "GEOCODER",
-            providerSource: "GOOGLE_CLIENT",
-        } : null;
-
-        if (fromInstant) {
-            list.unshift(fromInstant);
-        }
-        return list;
+    snapshot() {
+        return {
+            input: { ...this.input },
+            validation: { ...this.validation },
+            instant: this.instant ? { ...this.instant } : null,
+            suggestions: this.suggestions.slice(),
+            loading: this.loading,
+            error: this.error,
+        };
     }
 }
+
+// Basic logger shim
+const log = {
+    debug: (...args) => console.debug(...args),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+};

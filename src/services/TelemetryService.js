@@ -1,159 +1,175 @@
+// FILE: src/services/TelemetryService.js
+// ENHANCED FILE
+import { AddressExceptionApi } from '@/services/AddressExceptionApi'; // For sending logs
+import { AuthController } from '@/controllers/AuthController'; // To potentially check auth state
+import { ref } from 'vue';
+
+const MAX_BUFFER_SIZE = 50;
+const SEND_INTERVAL_MS = 15000; // Send logs every 15 seconds
+
 /**
- * ARCHITECTURE: TelemetryService emits structured events for operational analytics without UI coupling.
- * Buffers events and flushes periodically using navigator.sendBeacon (if available) or console fallback.
- * Adheres to SRP by isolating event formatting and transport logic.
+ * ARCHITECTURE: Simple telemetry for capturing key UI events and errors.
+ * ENHANCED: Captures console logs, buffers them, and sends them periodically to the backend.
  */
 export class TelemetryService {
-    constructor(transportFn = null, flushIntervalMs = 15000, maxBuffer = 100) {
-        // Use provided transport or default to beacon/console transport
-        this.transportFn = typeof transportFn === "function"
-            ? transportFn
-            : this._defaultBeaconTransport; // Use beacon transport as default
+    constructor(api = new AddressExceptionApi(), auth = new AuthController()) {
+        this.api = api; // Use API service to send logs
+        this.auth = auth; // To check if logged in
+        this._logBuffer = ref([]); // Use ref for potential reactivity if needed later
+        this._originalConsole = {};
+        this._sendTimeoutId = null;
+        this._isSending = false; // Prevent concurrent sends
 
-        this.flushIntervalMs = Math.max(1000, flushIntervalMs);
-        this.maxBuffer = Math.max(1, maxBuffer);
-        this._buf = [];
-        this._timer = null;
-        // Endpoint for beacon/fetch - should be configurable
-        this._telemetryEndpoint = "/api/telemetry"; // Example endpoint
+        this._wrapConsole();
+        this._startSendingInterval();
     }
 
-    /** Starts the periodic flushing mechanism. */
-    start() {
-        if (this._timer) return false;
-        this._timer = setInterval(() => {
-            this.flush().catch(err => console.error("[TelemetryService] Flush error:", err));
-        }, this.flushIntervalMs);
-        console.log("[TelemetryService] Started periodic flush.");
-        // Add listener for page unload to attempt final flush
-        if (typeof window !== "undefined") {
-            window.addEventListener('unload', this._unloadFlushHandler);
-        }
-        return true;
+    _wrapConsole() {
+        const levels = ['log', 'info', 'warn', 'error', 'debug'];
+        levels.forEach(level => {
+            this._originalConsole[level] = console[level];
+            console[level] = (...args) => {
+                // Call original console method
+                this._originalConsole[level]?.apply(console, args);
+                // Capture and buffer the log
+                this._captureLog(level, args);
+            };
+        });
+        // Capture unhandled errors/rejections
+        window.addEventListener('error', (event) => this._captureErrorEvent(event));
+        window.addEventListener('unhandledrejection', (event) => this._captureUnhandledRejection(event));
     }
 
-    /** Stops the periodic flushing mechanism. */
-    stop() {
-        if (!this._timer) return false;
-        clearInterval(this._timer);
-        this._timer = null;
-        if (typeof window !== "undefined") {
-            window.removeEventListener('unload', this._unloadFlushHandler);
+    _captureLog(level, args) {
+        if (this._logBuffer.value.length >= MAX_BUFFER_SIZE) {
+            // Optionally drop oldest log or stop buffering
+            // console.warn("[Telemetry] Log buffer full, dropping oldest entry.");
+            // this._logBuffer.value.shift();
+            return; // Stop buffering if full for now
         }
-        console.log("[TelemetryService] Stopped periodic flush.");
-        // Optional: Perform a final flush on explicit stop
-        // this.flush().catch(err => console.error("[TelemetryService] Final flush error:", err));
-        return true;
+        try {
+            const message = args.map(arg => this._formatArg(arg)).join(' ');
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                level: level.toUpperCase(),
+                message: message,
+                // Add context if needed: location: window.location.pathname, userAgent: navigator.userAgent
+            };
+            this._logBuffer.value.push(logEntry);
+        } catch(e) {
+            this._originalConsole.error?.("[Telemetry] Error capturing log:", e);
+        }
     }
 
-    // Bound handler for unload event
-    _unloadFlushHandler = () => {
-        // Use sendBeacon for unload, as async fetch might be cancelled
-        this._flushWithBeacon();
-    };
-
-    /** Emits a telemetry event, adding it to the buffer. */
-    emit(event) {
-        if (!event || !event.name) {
-            console.warn("[TelemetryService] Invalid event emitted (missing name):", event);
-            return null;
-        }
-        const e = {
-            at: Date.now(),
-            category: event?.category || "general",
-            name: event.name,
-            data: event?.data || {},
-            corr: event?.corr || null, // Correlation ID from event context
-            // Add session/user info if available globally
-            // sessionId: getSessionId(),
-            // userId: getUserId(),
+    _captureErrorEvent(event) {
+        // event: ErrorEvent
+        const entry = {
+            timestamp: new Date().toISOString(),
+            level: 'ERROR',
+            message: event.message,
+            source: 'window.onerror',
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            error: event.error ? this._formatArg(event.error) : null
         };
-        this._buf.push(e);
-        if (this._buf.length >= this.maxBuffer) {
-            // Use regular flush when buffer is full (not on unload)
-            this.flush().catch(err => console.error("[TelemetryService] Auto-flush error:", err));
-        }
-        return e;
+        this._logBuffer.value.push(entry);
     }
 
-    /** Flushes the buffered events using the configured transport function. */
-    async flush() {
-        if (this._buf.length === 0) {
-            return 0; // Nothing to flush
-        }
-        // Use the configured transport (beacon/console by default)
-        return await this._executeFlush(this.transportFn);
+    _captureUnhandledRejection(event) {
+        // event: PromiseRejectionEvent
+        const entry = {
+            timestamp: new Date().toISOString(),
+            level: 'ERROR',
+            message: 'Unhandled promise rejection',
+            source: 'window.onunhandledrejection',
+            reason: event.reason ? this._formatArg(event.reason) : null
+        };
+        this._logBuffer.value.push(entry);
     }
 
-    /** Attempts a synchronous flush using sendBeacon, suitable for unload events. */
-    _flushWithBeacon() {
-        if (this._buf.length === 0 || typeof navigator?.sendBeacon !== 'function') {
-            return 0; // Nothing to flush or beacon not available
+    _formatArg(arg) {
+        if (arg instanceof Error) {
+            return `${arg.name}: ${arg.message}\n${arg.stack}`;
         }
-        // Use the beacon transport directly for unload
-        const batch = this._buf.splice(0, this._buf.length);
-        try {
-            const blob = new Blob([JSON.stringify(batch)], { type: 'application/json' });
-            navigator.sendBeacon(this._telemetryEndpoint, blob);
-            // Cannot reliably log success/failure from sendBeacon
-            // console.log(`[TelemetryService] Attempted beacon flush of ${batch.length} events on unload.`);
-            return batch.length;
-        } catch (error) {
-            console.error("[TelemetryService] sendBeacon failed:", error);
-            // Cannot reliably re-queue on unload
-            return 0;
-        }
-    }
-
-
-    /** Internal helper to execute flush logic and handle errors */
-    async _executeFlush(transport) {
-        if (!transport || this._buf.length === 0) {
-            return 0;
-        }
-        const batch = this._buf.splice(0, this._buf.length);
-        try {
-            await transport(batch);
-            // console.debug(`[TelemetryService] Flushed ${batch.length} events via ${transport.name}.`);
-            return batch.length;
-        } catch (error) {
-            console.error("[TelemetryService] Transport function failed:", error);
-            // Simple strategy: Drop failed batch. Implement retry/queueing if needed.
-            // this._buf.unshift(...batch); // Example: Re-queue (use with caution)
-            throw error;
-        }
-    }
-
-    /** Default transport using navigator.sendBeacon if available, falling back to console. */
-    async _defaultBeaconTransport(batch) {
-        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        if (typeof arg === 'object' && arg !== null) {
             try {
-                const blob = new Blob([JSON.stringify(batch)], { type: 'application/json' });
-                // Use sendBeacon for background-safe sending, fire-and-forget
-                const success = navigator.sendBeacon(this._telemetryEndpoint, blob);
-                if (!success) {
-                    console.warn("[TelemetryService] navigator.sendBeacon returned false, data might not have been sent.");
-                    // Fallback to fetch if beacon fails immediately? Might be too late.
-                }
-            } catch (error) {
-                console.error("[TelemetryService] Error using navigator.sendBeacon:", error);
-                // Fallback to console if beacon throws (should be rare)
-                console.log("[TelemetryService Fallback Console]", JSON.stringify(batch, null, 2));
+                // Basic object serialization, limit depth/size if needed
+                return JSON.stringify(arg);
+            } catch {
+                return '[Unserializable Object]';
             }
-        } else {
-            // Fallback for environments without sendBeacon
-            console.log("[TelemetryService Fallback Console]", JSON.stringify(batch, null, 2));
-            // Alternative: Use fetch API here, but it's not guaranteed on unload
-            /* try {
-                await fetch(this._telemetryEndpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(batch),
-                    keepalive: true // Important for unload scenarios, but not universally supported
-                });
-            } catch (fetchError) {
-                console.error("[TelemetryService Fallback Fetch Error]:", fetchError);
-            } */
         }
+        return String(arg);
+    }
+
+    _startSendingInterval() {
+        if (this._sendTimeoutId) clearTimeout(this._sendTimeoutId);
+        this._sendTimeoutId = setInterval(() => {
+            this._sendBufferedLogs();
+        }, SEND_INTERVAL_MS);
+    }
+
+    async _sendBufferedLogs() {
+        // Check if user is authenticated before sending
+        if (!this.auth.isAuthenticatedRef.value || this._isSending) {
+            return;
+        }
+        if (this._logBuffer.value.length === 0) {
+            return;
+        }
+
+        // Important: Swap buffer immediately to avoid race conditions
+        const logsToSend = this._logBuffer.value;
+        this._logBuffer.value = [];
+        this._isSending = true;
+
+        try {
+            this._originalConsole.debug?.(`[Telemetry] Sending ${logsToSend.length} log entries...`);
+            // Use the API client method (to be created in AddressExceptionApi)
+            await this.api.sendClientLogs(logsToSend);
+            // Logs sent successfully
+        } catch (error) {
+            this._originalConsole.error?.("[Telemetry] Failed to send client logs:", error);
+            // Failed: Put logs back into buffer (potentially merging with new ones)
+            // Be careful about buffer size limit
+            const currentBuffer = this._logBuffer.value;
+            this._logBuffer.value = [...logsToSend, ...currentBuffer].slice(0, MAX_BUFFER_SIZE);
+            if (this._logBuffer.value.length >= MAX_BUFFER_SIZE) {
+                this._originalConsole.warn?.("[Telemetry] Log buffer full after send failure.");
+            }
+        } finally {
+            this._isSending = false;
+        }
+    }
+
+    // Method to manually trigger send (e.g., on beforeunload)
+    flushLogs() {
+        if (this._sendTimeoutId) clearTimeout(this._sendTimeoutId);
+        this._sendTimeoutId = null; // Stop interval
+        // Send any remaining logs synchronously if possible, or async
+        this._sendBufferedLogs(); // Fire and forget async send
+    }
+
+    // Call this when app unloads
+    destroy() {
+        this.flushLogs();
+        // Restore original console methods
+        Object.keys(this._originalConsole).forEach(level => {
+            if (console[level] === this._originalConsole[level]) return; // Already restored or never wrapped
+            console[level] = this._originalConsole[level];
+        });
+        window.removeEventListener('error', this._captureErrorEvent);
+        window.removeEventListener('unhandledrejection', this._captureUnhandledRejection);
+    }
+
+    // Existing methods (can remain or be removed if only log capture is needed)
+    event(name, data = {}) {
+        // console.log("[Telemetry Event]", name, data);
+        this._captureLog('info', [`[Telemetry Event] ${name}`, data]);
+    }
+    error(err, context = {}) {
+        // console.error("[Telemetry Error]", err, context);
+        this._captureLog('error', ["[Telemetry Error]", err, context]);
     }
 }

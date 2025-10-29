@@ -1,60 +1,65 @@
-/**
- * ARCHITECTURE: main.js mounts App.vue, installs Pinia + Router, and provides DI singletons.
- * Responsibilities:
- * - Create AuthController and provide it under the 'auth' key so views (LoginView) can call auth.login().
- * - Bootstrap environment (orchestrator, googleKey, health) and provide them as well.
- */
+// ============================================================================
+// Frontend: Update main.js (Final Version)
+// REASON: Configure GeoRuntime to use the '/nominatim' proxy path.
+// ============================================================================
+// FILE: src/main.js
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "@/App.vue";
-import { createRouterWithKey } from "@/router/index";
+import { createRouter } from "@/router/index";
 import { AppBootstrapController } from "@/controllers/AppBootstrapController";
 import { AuthController } from "@/controllers/AuthController";
+import { GeoRuntime } from "@/adapters/GeoRuntime";
+import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
+import '@/assets/theme.css';
 
-// Use an async IIFE to allow top-level await for bootstrap
 (async () => {
     const pinia = createPinia();
-
-    // Initialize authentication controller and load any existing session
     const auth = new AuthController();
     auth.hydrateFromStorage();
 
-    // Bootstrap application configuration and health checks
     const bootstrap = new AppBootstrapController();
     const boot = await bootstrap.bootstrap();
+    const config = boot.config || {};
+    const health = boot.health || { ok: false };
 
-    // Create router instance, potentially passing config like Google API key
-    const router = createRouterWithKey(boot.googleKey);
+    // 3. Configure GeoRuntime
+    const geoProviderConfig = {
+        map: (config?.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
+        geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
+        places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
+        nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
+        // *** FIX: Use the proxy path, not the direct IP from the adapter's default ***
+        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim',
+        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || null,
+    };
+    const googleKey = config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
+    const geoRuntime = new GeoRuntime(geoProviderConfig);
 
-    // Create the main Vue application instance
+    // 4. Initialize GeoRuntime
+    try {
+        await geoRuntime.init(googleKey);
+        console.log("[main.js] Geo Runtime initialization attempted.");
+    } catch(err) {
+        console.error("[main.js] Global Geo Runtime initialization failed:", err?.message || err);
+    }
+
+    const router = createRouter(geoRuntime);
     const app = createApp(App);
 
-    // Global Vue error handler
-    app.config.errorHandler = (err, instance, info) => {
-        // eslint-disable-next-line no-console
-        console.error("[vue-error]", err, info, instance);
-    };
-    // Global window error handler for unhandled promise rejections etc.
-    window.addEventListener("error", (e) => {
-        // eslint-disable-next-line
-        console.error("[window-error]", e?.error || e?.message || e);
-    });
-    window.addEventListener("unhandledrejection", (e) => {
-        // eslint-disable-next-line no-console
-        console.error("[unhandled-rejection]", e?.reason || e);
-    });
+    app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
+    window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
+    window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));
 
-
-    // Install plugins
     app.use(pinia);
     app.use(router);
 
-    // Dependency Injection: Provide shared instances to components
-    app.provide("auth", auth); // Make AuthController available
-    app.provide("orchestrator", boot.orchestrator); // Make main orchestrator available
-    app.provide("googleKey", boot.googleKey); // Provide Google API Key
-    app.provide("health", boot.health); // Provide health status
+    const orchestrator = new IntegrationOrchestrator(geoRuntime, null);
+    app.provide("orchestrator", orchestrator);
+    app.provide("auth", auth);
+    app.provide("config", config);
+    app.provide("health", health);
+    app.provide("geoRuntime", geoRuntime);
 
-    // Mount the application to the DOM
     app.mount("#app");
 })();

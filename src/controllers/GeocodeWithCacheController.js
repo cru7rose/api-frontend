@@ -1,52 +1,79 @@
-// FILE: controllers/GeocodeWithCacheController.js
-/**
- * ARCHITECTURE: GeocodeWithCacheController composes cache, quota backoff for geocoding.
- * It follows the manifesto by isolating resilience and performance concerns behind a single geocode() method.
- * Responsibilities:
- * - Check in-memory cache, call the provider, and apply quota backoff on retryable errors.
- * - Store successful results back to cache with TTL.
- * REFACTORED: Removed VerificationQueueController dependency as it's being removed. Direct calls are now made.
- */
+// FILE: src/controllers/GeocodeWithCacheController.js
+// MODIFIED - Request adapter without specifying provider
 import { AddressGeocodeCache } from "@/services/AddressGeocodeCache";
 import { QuotaBackoffService } from "@/services/QuotaBackoffService";
-// REMOVED: import { VerificationQueueController } from "@/controllers/VerificationQueueController";
 
+/**
+ * ARCHITECTURE: Composes cache, quota backoff for geocoding.
+ * Uses injected GeoRuntime to get the configured geocoder adapter.
+ */
 export class GeocodeWithCacheController {
     constructor(
-        geocoderAdapter,
+        geoRuntime,
         cache = new AddressGeocodeCache(),
         backoff = new QuotaBackoffService()
-        // REMOVED: queue dependency
     ) {
-        this.geocoder = geocoderAdapter;
+        if (!geoRuntime) throw new Error("GeocodeWithCacheController requires GeoRuntime.");
+        this.geoRuntime = geoRuntime;
         this.cache = cache;
         this.backoff = backoff;
-        // REMOVED: this.queue = queue;
+        this._geocoderAdapter = null;
+        // Lazy load
     }
+
+    _getAdapter() {
+        // *** FIX: Ensure GeoRuntime is initialized before requesting adapter ***
+        // This relies on GeoRuntime.init() being called globally in main.js
+        // or the router guard.
+        if (!this._geocoderAdapter) {
+            try {
+                // Request the *configured* geocoding adapter
+                this._geocoderAdapter = this.geoRuntime.geocodingAdapter();
+                if(!this._geocoderAdapter) throw new Error("GeoRuntime returned null geocoding adapter.");
+            } catch (e) {
+                log.error("Failed to get configured geocoding adapter from GeoRuntime:", e);
+                throw e; // Re-throw if no adapter available
+            }
+        }
+        return this._geocoderAdapter;
+    }
+
 
     async geocode(address) {
         const hit = this.cache.get(address);
         if (hit) {
-            // console.debug("Geocode cache hit:", address);
+            log.debug("[GeocodeCache] Cache hit for address:", address);
             return hit;
         }
-        // console.debug("Geocode cache miss:", address);
+        log.debug("[GeocodeCache] Cache miss for address:", address);
 
-        // Directly execute the task with backoff, removing the queue layer
+        // *** FIX: Ensure adapter is requested *before* task execution if not already loaded ***
+        try {
+            this._getAdapter();
+        } catch (e) {
+            log.error("[GeocodeCache] Cannot geocode, adapter unavailable:", e.message);
+            return null;
+        }
+        // *** END FIX ***
+
         const task = async () => {
-            const run = () => this.geocoder.geocodeAddress(address);
+            const adapter = this._getAdapter();
+            const run = () => adapter.geocodeAddress(address);
             const result = await this.backoff.execute(run);
-            if (result) {
-                // console.debug("Geocode success, caching:", address, result);
+            if (result && typeof result.latitude === 'number' && typeof result.longitude === 'number') {
+                log.debug("[GeocodeCache] Geocode success, caching:", address, result);
                 this.cache.put(address, result);
             } else {
-                // console.debug("Geocode returned null/empty, not caching:", address);
+                log.debug("[GeocodeCache] Geocode returned null/empty or invalid coordinates, not caching:", address);
             }
             return result;
         };
 
-        // Replace queue enqueue with direct execution
         return task();
-        // REMOVED: return this.queue.enqueue(task);
     }
 }
+
+const log = {
+    debug: (...args) => console.debug(...args),
+    error: (...args) => console.error(...args),
+};

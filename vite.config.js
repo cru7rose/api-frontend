@@ -1,43 +1,45 @@
-/**
- * ARCHITECTURE: Vite config sets alias and dev proxy to avoid CORS during local development.
- * Responsibilities:
- * - Proxy /auth, /api, /status to VITE_PROXY_TARGET so the browser stays same-origin (localhost:5173).
- */
-import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
-import path from "path";
-
-const target = process.env.VITE_PROXY_TARGET || "https://api.danxils.com";
+import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+  ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
-    },
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
   },
   server: {
     port: 5173,
-    strictPort: false,
     proxy: {
-      // authenticate and session endpoints
-      "/auth": {
-        target,
+      // Proxy all /api requests (This is correct)
+      '/api': {
+        target: 'https://api.danxils.com',
         changeOrigin: true,
         secure: true,
       },
-      // application APIs
-      "/api": {
-        target,
+      // Proxy all /auth requests
+      '/auth': {
+        target: 'https://api.danxils.com',
         changeOrigin: true,
         secure: true,
+        // *** REMOVED rewrite rule ***
+        // This will now correctly proxy /auth/login to https://api.danxils.com/auth/login
       },
-      // health/provider checks
-      "/status": {
-        target,
+      // Proxy requests from /nominatim (Keep as is)
+      '/nominatim': {
+        target: 'http://10.105.0.188:5001',
         changeOrigin: true,
-        secure: true,
+        rewrite: (path) => path.replace(/^\/nominatim/, ''),
       },
-    },
-  },
-});
+      // Proxy requests from /osrm (Keep as is)
+      '/osrm': {
+        target: 'http://10.105.0.188:5000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osrm/, ''),
+      }
+    }
+  }
+})

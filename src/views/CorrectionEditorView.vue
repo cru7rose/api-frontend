@@ -1,340 +1,483 @@
 <script setup>
-/**
- * ARCHITECTURE: CorrectionEditorView provides the UI for side-by-side address comparison and editing.
- * It orchestrates loading, user input, map interaction, and saving via EditorFacade and related controllers.
- * Responsibilities:
- * - Load order details and suggestions based on route parameter (orderId).
- * - Display original, suggested, and editable address fields for pickup and delivery.
- * - Integrate the Google Map view via MapController.
- * - Handle user actions: Accept Suggestion, Use Original, Manual Edit, Save, Save & Next.
- * - Fetch suggestions/error details using the processingErrorsStore.
- */
-import { ref, onMounted, onUnmounted, inject, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, provide, nextTick } from 'vue'; // Import nextTick
 import { useRoute, useRouter } from 'vue-router';
-import { useProcessingErrorsStore } from '@/stores/processingErrorsStore'; // For suggestions
-import { Address } from '@/domain/WorkbenchModels'; // Domain model
+import { storeToRefs } from 'pinia';
+import { useWorklistStore } from '@/stores/worklistStore';
+import { IntegrationOrchestrator } from '@/controllers/IntegrationOrchestrator';
+import { EditorSessionStore } from '@/stores/EditorSessionStore';
+import { Address } from '@/domain/WorkbenchModels';
+import { AddressFormatterService } from '@/services/AddressFormatterService';
+import { AddressExceptionApi } from '@/services/AddressExceptionApi';
+import { GeocodeWithCacheController } from '@/controllers/GeocodeWithCacheController';
+import { MapController } from '@/controllers/MapController';
 
-// --- Injected Controllers/Services ---
-const orchestrator = inject('orchestrator');
-const googleKey = inject('googleKey'); // Provided in main.js
-const editorFacade = orchestrator.getEditor();
-const mapController = orchestrator.mapController; // Assuming orchestrator provides this after init
-const processingErrorsStore = useProcessingErrorsStore();
+// --- Page Components ---
+import AddressDisplay from '@/components/editor/AddressDisplay.vue';
+import AddressEditor from '@/components/editor/AddressEditor.vue';
+// import AddressDiff from '@/components/editor/AddressDiff.vue'; // Optional
+import StatusBadge from '@/components/common/StatusBadge.vue';
+import ActionButton from '@/components/common/ActionButton.vue';
 
-// --- Routing ---
+// --- Injected from main.js ---
+import { inject } from 'vue';
+const geoRuntime = inject('geoRuntime');
+const showNotification = inject('showNotification');
+
+// --- State ---
 const route = useRoute();
 const router = useRouter();
+const worklistStore = useWorklistStore();
+const api = new AddressExceptionApi(); // For autocomplete
 
-// --- Component State ---
 const orderId = ref(route.params.id);
-const editorState = ref(editorFacade.snapshot()); // Reactive snapshot
-const isLoading = ref(false);
-const isSaving = ref(false);
+const isLoading = ref(true);
 const error = ref(null);
-const mapContainer = ref(null); // Template ref for map div
 
-// Separate reactive models for editable fields to avoid direct mutation of facade state
-const editablePickup = ref(new Address());
-const editableDelivery = ref(new Address());
+// --- Local Controllers ---
+const formatter = new AddressFormatterService();
+const session = new EditorSessionStore(); // (Or inject if global)
+
+// --- Core Editor Controllers (will be initialized in onMounted) ---
+let orchestrator = null;
+let mapController = null;
+let geocodeController = null;
+let editorFacade = null;
+
+// --- Reactive Data Models ---
+const orderDetail = ref(null); // The full order detail DTO
+const editedPickup = ref(new Address());
+const editedDelivery = ref(new Address());
+
+// -- Computed Diff --
+const hasPickupChanged = computed(() => {
+  if (!orderDetail.value) return false;
+  return JSON.stringify(orderDetail.value.originalPickup) !== JSON.stringify(editedPickup.value);
+});
+const hasDeliveryChanged = computed(() => {
+  if (!orderDetail.value) return false;
+  return JSON.stringify(orderDetail.value.originalDelivery) !== JSON.stringify(editedDelivery.value);
+});
+const hasAnyChanged = computed(() => hasPickupChanged.value || hasDeliveryChanged.value);
+
+
+// --- Map Element Ref ---
+const mapContainer = ref(null); // Ref for the map div
+
+// --- Autocomplete State ---
+const streetSuggestions = ref([]);
+const streetLoading = ref(false);
+let streetDebounceTimer = null;
 
 // --- Methods ---
-async function loadOrderData(id) {
+
+// *** BUILD FIX: Removed the underscore ***
+const loadOrder = async (id) => {
   isLoading.value = true;
   error.value = null;
-  const loadResult = await editorFacade.load(id);
-
-  if (loadResult.ok) {
-    editorState.value = editorFacade.snapshot();
-    // Initialize editable models from the loaded state
-    editablePickup.value = Address.from(editorState.value.editor?.editedPickup || editorState.value.editor?.detail?.originalPickup);
-    editableDelivery.value = Address.from(editorState.value.editor?.editedDelivery || editorState.value.editor?.detail?.originalDelivery);
-
-    // Fetch suggestions/error details separately
-    if (editorState.value.editor?.detail?.barcode) {
-      await processingErrorsStore.fetchProcessingErrors({ barcode: editorState.value.editor.detail.barcode, size: 1 });
-      // Assuming the store updates `currentErrorDetails` or provides a way to get suggestions by barcode/eventId
-      // Update editorState.value.editor.detail.suggestedPickup/Delivery based on store result
-      // This part needs refinement based on how suggestions are stored/retrieved
-      const errorDetails = processingErrorsStore.errors.find(e => e.barcode === editorState.value.editor.detail.barcode); // Simplistic lookup
-      if (errorDetails?.suggestedAddresses?.length > 0) {
-        // Need logic to determine if suggestions are for pickup or delivery based on errorType maybe
-        // For now, let's assume suggestions apply to delivery if present
-        if (editorState.value.editor.detail) {
-          editorState.value.editor.detail.suggestedDelivery = errorDetails.suggestedAddresses;
-        }
-      }
-    }
-
-    // Focus map on delivery address initially
-    focusMap(editableDelivery.value);
-
-  } else {
-    error.value = loadResult.error?.message || 'Failed to load order details';
-  }
-  isLoading.value = false;
-}
-
-function handleAcceptSuggestion(side, index = 0) {
-  const result = side === 'pickup'
-      ? editorFacade.acceptPickupSuggestion(index)
-      : editorFacade.acceptDeliverySuggestion(index);
-
-  if (result.ok) {
-    // Update local editable models after facade updates its internal state
-    editorState.value = editorFacade.snapshot();
-    editablePickup.value = Address.from(editorState.value.editor?.editedPickup);
-    editableDelivery.value = Address.from(editorState.value.editor?.editedDelivery);
-    focusMap(side === 'pickup' ? editablePickup.value : editableDelivery.value);
-  } else {
-    console.error(`Failed to accept ${side} suggestion:`, result.error);
-    // Show user feedback?
-  }
-}
-
-function handleUseOriginal(side) {
-  const result = side === 'pickup'
-      ? editorFacade.useOriginalPickup()
-      : editorFacade.useOriginalDelivery();
-
-  if (result.ok) {
-    editorState.value = editorFacade.snapshot();
-    editablePickup.value = Address.from(editorState.value.editor?.editedPickup);
-    editableDelivery.value = Address.from(editorState.value.editor?.editedDelivery);
-    focusMap(side === 'pickup' ? editablePickup.value : editableDelivery.value);
-  } else {
-    console.error(`Failed to use original ${side}:`, result.error);
-  }
-}
-
-// Update facade when local editable models change
-watch(editablePickup, (newVal) => {
-  editorFacade.setManualPickup(Address.from(newVal)); // Use clone/from to avoid reactivity issues
-  // Optionally trigger geocoding on change (debounced)
-}, { deep: true });
-
-watch(editableDelivery, (newVal) => {
-  editorFacade.setManualDelivery(Address.from(newVal));
-  // Optionally trigger geocoding on change (debounced)
-  focusMap(newVal); // Focus map on delivery changes
-}, { deep: true });
-
-
-async function handleSave(side = 'both') {
-  isSaving.value = true;
-  error.value = null;
-  // Use the new saveCorrection method directly
-  const payload = {
-    orderId: orderId.value,
-    side: side,
-    // Pass the *current* editable state directly
-    correctedPickup: side === 'pickup' || side === 'both' ? editablePickup.value.toPlain() : null,
-    correctedDelivery: side === 'delivery' || side === 'both' ? editableDelivery.value.toPlain() : null,
-    resolution: editorState.value.editor?.detail?.processingStatus === 'ADDRESS_NEEDS_REVIEW' ? 'MANUAL_EDIT' : 'ACCEPT_SUGGESTION' // Example logic
-  };
-
   try {
-    const saveResult = await editorFacade.api.saveCorrection(payload); // Assuming api is accessible
-    if (saveResult.ok) {
-      console.log('Save successful:', saveResult.value);
-      // Optionally navigate back or show success
-      router.push('/worklist'); // Example: Navigate back after save
-    } else {
-      throw saveResult.error;
+    const result = await editorFacade.load(id);
+    if (!result.ok) throw result.error;
+
+    const detail = result.value;
+    orderDetail.value = detail;
+
+    // Set initial state for editable forms
+    editedPickup.value = new Address(detail.originalPickup);
+    editedDelivery.value = new Address(detail.originalDelivery);
+
+    // *** FIX: Initialize map AFTER data is loaded and v-if is true ***
+    await nextTick(); // Wait for Vue to render the DOM
+
+    if (mapContainer.value && !mapController._ready) { // Check if map is already init
+      await mapController.init(mapContainer.value);
     }
+
+    // Update map with initial markers
+    await updateMapMarkers();
+
   } catch (err) {
-    error.value = err.message || 'Failed to save correction';
-    console.error('Save failed:', err);
+    error.value = err.message || 'Failed to load order details.';
+    console.error("Error loading order:", err);
   } finally {
-    isSaving.value = false;
+    isLoading.value = false;
   }
-}
+};
 
-async function handleSaveAndNext() {
-  // Implementation needs SaveAndNextController or similar logic
-  console.warn('Save & Next not fully implemented yet');
-  // 1. Call handleSave()
-  // 2. If successful, use orchestrator.queue to get next ID
-  // 3. Navigate router.push(`/editor/${nextId}`)
-}
-
-async function focusMap(address) {
-  if (mapController && address?.latitude != null && address?.longitude != null) {
-    try {
-      await mapController.updateMarker(address.latitude, address.longitude, true);
-    } catch (mapError) {
-      console.warn("Map focus/update failed:", mapError);
-    }
-  } else if (mapController) {
-    console.debug("Cannot focus map, address or coordinates missing:", address);
-    // Maybe try geocoding the address here if coords are missing?
-  }
-}
-
-
-// --- Lifecycle & Map Initialization ---
-onMounted(async () => {
-  if (!googleKey) {
-    error.value = "Google Maps API Key is missing. Map functionality disabled.";
-    console.error(error.value);
-    await loadOrderData(orderId.value); // Load order even if map fails
+const updateMapMarkers = async () => {
+  if (!mapController || !mapController._ready) {
+    console.warn("updateMapMarkers called but map is not ready.");
     return;
   }
-  try {
-    // Ensure Google Runtime and MapController are initialized
-    // This might happen in main.js or App.vue, ensure mapController is ready here
-    if (!orchestrator.google) {
-      await orchestrator.googleRuntime.init(googleKey); // Assuming googleRuntime exists
-      orchestrator.google = orchestrator.googleRuntime._google; // Assign loaded object
-    }
-    if (!orchestrator.mapController && mapContainer.value) {
-      const mapAdapter = orchestrator.googleRuntime.mapAdapter(); // Assuming googleRuntime exists
-      orchestrator.mapController = new MapController(mapAdapter);
-      await orchestrator.mapController.init(mapContainer.value);
-      editorFacade.preview = new SuggestionPreviewController(orchestrator.mapController); // Wire up previewer
-    }
 
-    await loadOrderData(orderId.value);
+  let pkPos = null, dlPos = null;
 
-  } catch (initError) {
-    error.value = `Failed to initialize editor or map: ${initError.message}`;
-    console.error(error.value, initError);
-    if (!editorState.value.editor?.detail) {
-      await loadOrderData(orderId.value); // Try loading order data anyway
-    }
+  // Prefer edited data
+  const pickup = editedPickup.value;
+  const delivery = editedDelivery.value;
+
+  if (pickup?.latitude && pickup?.longitude) {
+    pkPos = { lat: pickup.latitude, lon: pickup.longitude };
+    await mapController.updatePickupMarker(pkPos.lat, pkPos.lon);
   }
+  if (delivery?.latitude && delivery?.longitude) {
+    dlPos = { lat: delivery.latitude, lon: delivery.longitude };
+    await mapController.updateDeliveryMarker(dlPos.lat, dlPos.lon);
+  }
+
+  // If we have both, draw route and fit map
+  if (pkPos && dlPos) {
+    await mapController.drawRouteAndFit(pkPos, dlPos);
+  } else if (pkPos) {
+    // Only zoom if this is the *only* marker
+    await mapController.setCenter(pkPos.lat, pkPos.lon, dlPos ? null : 15);
+  } else if (dlPos) {
+    // Only zoom if this is the *only* marker
+    await mapController.setCenter(dlPos.lat, dlPos.lon, pkPos ? null : 15);
+  }
+};
+
+// --- Geocoding Method (P2) ---
+const handleGeocode = async (side) => {
+  const addressToGeocode = (side === 'pickup') ? editedPickup.value : editedDelivery.value;
+
+  // Use the GeocodeWithCacheController
+  const result = await geocodeController.geocode(addressToGeocode);
+
+  if (result && result.latitude && result.longitude) {
+    if (side === 'pickup') {
+      editedPickup.value.latitude = result.latitude;
+      editedPickup.value.longitude = result.longitude;
+    } else {
+      editedDelivery.value.latitude = result.latitude;
+      editedDelivery.value.longitude = result.longitude;
+    }
+    showNotification(`Geocode successful for ${side}`, 'success');
+    await updateMapMarkers(); // Update map with new pin
+  } else {
+    showNotification(`Geocode failed for ${side}. Check address fields or Nominatim server.`, 'error');
+  }
+};
+
+// --- Autocomplete Method (P5) ---
+const onStreetInput = (event, side) => {
+  const postal = (side === 'pickup') ? editedPickup.value.postalCode : editedDelivery.value.postalCode;
+  const city = (side === 'pickup') ? editedPickup.value.city : editedDelivery.value.city;
+  const query = event.target.value;
+
+  if (query.length < 3 || !postal || !city) {
+    streetSuggestions.value = [];
+    return; // Only search if we have postal and city context
+  }
+
+  streetLoading.value = true;
+  clearTimeout(streetDebounceTimer);
+  streetDebounceTimer = setTimeout(async () => {
+    try {
+      // Use the API service directly for this simple lookup
+      const result = await api.getStreetsForPostalCode(postal, city);
+      if (result.ok) {
+        // Filter results based on the query
+        streetSuggestions.value = result.value
+            .filter(s => s.value.toLowerCase().includes(query.toLowerCase()))
+            .slice(0, 5); // Limit to 5
+      } else {
+        streetSuggestions.value = [];
+      }
+    } catch (e) {
+      console.warn("Street suggestion query failed:", e);
+      streetSuggestions.value = [];
+    } finally {
+      streetLoading.value = false;
+    }
+  }, 300);
+};
+
+const selectStreetSuggestion = (suggestion, side) => {
+  if (side === 'pickup') {
+    editedPickup.value.street = suggestion.value;
+  } else {
+    editedDelivery.value.street = suggestion.value;
+  }
+  streetSuggestions.value = []; // Hide suggestions
+};
+
+
+// --- Button Action Methods (P4) ---
+const handleSave = async (side) => {
+  isLoading.value = true; // Show global loader
+
+  // 1. Determine which addresses to save
+  const payload = {
+    orderId: orderId.value,
+    side: side, // 'pickup', 'delivery', or 'both'
+    resolution: "MANUAL_EDIT",
+    applyToSimilar: false, // You can add a checkbox to control this
+    correctedPickup: (side === 'pickup' || side === 'both') ? editedPickup.value : null,
+    correctedDelivery: (side === 'delivery' || side === 'both') ? editedDelivery.value : null,
+  };
+
+  // 2. Call the API
+  const result = await api.saveCorrection(payload);
+
+  if (result.ok) {
+    showNotification('Save successful!', 'success');
+    // 3. Reload the order to show the new "MANUALLY_CORRECTED" status
+    await loadOrder(orderId.value);
+  } else {
+    showNotification(`Save failed: ${result.error.message}`, 'error');
+    error.value = result.error.message;
+  }
+  isLoading.value = false;
+};
+
+const handleResubmit = async () => {
+  isLoading.value = true;
+  const result = await api.resubmitOrder(orderId.value);
+  if (result.ok) {
+    showNotification('Resubmit request sent. Order is queued for re-verification.', 'info');
+    // Reload to show PENDING status
+    await loadOrder(orderId.value);
+  } else {
+    showNotification(`Resubmit failed: ${result.error.message}`, 'error');
+  }
+  isLoading.value = false;
+};
+
+
+// --- Lifecycle ---
+onMounted(async () => {
+  // 1. Instantiate MapController
+  mapController = new MapController(geoRuntime.mapAdapter());
+
+  // 2. Instantiate GeocodeController
+  geocodeController = new GeocodeWithCacheController(geoRuntime);
+
+  // 3. Instantiate Orchestrator
+  orchestrator = new IntegrationOrchestrator(geoRuntime, mapController);
+
+  // 4. Get the facade
+  editorFacade = orchestrator.getEditor();
+
+  // 5. Load the order (this will now init the map *after* data is loaded)
+  await loadOrder(orderId.value);
 });
 
-onUnmounted(async () => {
-  // Destroy map if mapController was initialized specifically for this view
-  // If mapController is shared/global, destruction might happen elsewhere
-  // if (mapController) {
-  //     await mapController.destroy();
-  // }
-});
-
-// Watch for route changes if the component is reused
-watch(() => route.params.id, (newId) => {
-  if (newId && newId !== orderId.value) {
-    orderId.value = newId;
-    loadOrderData(newId);
+onUnmounted(() => {
+  if (mapController) {
+    mapController.destroy();
   }
+  clearTimeout(streetDebounceTimer);
 });
 
 </script>
 
 <template>
-  <div class="correction-editor">
-    <h1>Correction Editor</h1>
-    <div v-if="isLoading">Loading order...</div>
-    <div v-if="error" class="error-message">Error: {{ error }}</div>
+  <div class="correction-editor container">
 
-    <div v-if="!isLoading && !error && editorState.editor?.detail" class="editor-content">
-      <h2>Order Details</h2>
-      <p><strong>Order ID:</strong> {{ editorState.currentOrderId }}</p>
-      <p><strong>Barcode:</strong> {{ editorState.editor.detail.barcode }}</p>
-      <p><strong>Status:</strong> {{ editorState.editor.detail.processingStatus }}</p>
-
-      <div class="address-sections">
-        <section class="address-section pickup">
-          <h3>Pickup Address</h3>
-          <div class="address-comparison">
-            <div class="address-column original">
-              <h4>Original Input</h4>
-              <pre>{{ editorState.editor.detail.originalPickup }}</pre>
-            </div>
-            <div class="address-column suggestions">
-              <h4>Suggestions (TES/Google)</h4>
-              <ul v-if="editorState.editor.detail.suggestedPickup?.length > 0">
-                <li v-for="(sug, index) in editorState.editor.detail.suggestedPickup" :key="index">
-                  <pre>{{ sug }}</pre>
-                  <button @click="handleAcceptSuggestion('pickup', index)">Accept</button>
-                </li>
-              </ul>
-              <p v-else>(No suggestions available)</p>
-            </div>
-            <div class="address-column editable">
-              <h4>Editable / Corrected</h4>
-              <form @submit.prevent>
-                <label>Street: <input type="text" v-model="editablePickup.street"></label>
-                <label>House No: <input type="text" v-model="editablePickup.houseNumber"></label>
-                <label>Postal Code: <input type="text" v-model="editablePickup.postalCode"></label>
-                <label>City: <input type="text" v-model="editablePickup.city"></label>
-                <label>Country: <input type="text" v-model="editablePickup.country"></label>
-              </form>
-              <button @click="handleUseOriginal('pickup')">Use Original</button>
-              <button @click="handleSave('pickup')" :disabled="isSaving">Save Pickup</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="address-section delivery">
-          <h3>Delivery Address</h3>
-          <div class="address-comparison">
-            <div class="address-column original">
-              <h4>Original Input</h4>
-              <pre>{{ editorState.editor.detail.originalDelivery }}</pre>
-            </div>
-            <div class="address-column suggestions">
-              <h4>Suggestions (TES/Google)</h4>
-              <ul v-if="editorState.editor.detail.suggestedDelivery?.length > 0">
-                <li v-for="(sug, index) in editorState.editor.detail.suggestedDelivery" :key="index">
-                  <p><strong>{{ sug.fullAddressLabel || `${sug.street || ''} ${sug.houseNumber || ''}, ${sug.postalCode || ''} ${sug.city || ''}` }}</strong></p>
-                  <p>Source: {{sug.providerSource}}, Score: {{sug.matchScore?.toFixed(2)}}, Level: {{sug.matchLevel}}</p>
-                  <button @click="handleAcceptSuggestion('delivery', index)">Accept</button>
-                </li>
-              </ul>
-              <p v-else>(No suggestions available)</p>
-            </div>
-            <div class="address-column editable">
-              <h4>Editable / Corrected</h4>
-              <form @submit.prevent>
-                <label>Street: <input type="text" v-model="editableDelivery.street"></label>
-                <label>House No: <input type="text" v-model="editableDelivery.houseNumber"></label>
-                <label>Postal Code: <input type="text" v-model="editableDelivery.postalCode"></label>
-                <label>City: <input type="text" v-model="editableDelivery.city"></label>
-                <label>Country: <input type="text" v-model="editableDelivery.country"></label>
-                <p>Lat: {{ editableDelivery.latitude?.toFixed(6) || 'N/A' }}, Lon: {{ editableDelivery.longitude?.toFixed(6) || 'N/A' }}</p>
-              </form>
-              <button @click="handleUseOriginal('delivery')">Use Original</button>
-              <button @click="handleSave('delivery')" :disabled="isSaving">Save Delivery</button>
-            </div>
-          </div>
-        </section>
+    <div class="editor-header">
+      <h1>Correction Editor</h1>
+      <div class="header-details">
+        <span>Order ID: {{ orderId }}</span>
+        <span>Barcode: {{ orderDetail?.barcode }}</span>
       </div>
+      <router-link to="/worklist" class="button secondary">Back to Worklist</router-link>
+    </div>
 
-      <section class="map-section">
-        <h3>Map View</h3>
-        <div ref="mapContainer" class="map-container">
+    <div v-if="isLoading && !orderDetail" class="loading-full-page">Loading Order...</div>
+    <div v-if="error" class="error-message card">{{ error }}</div>
+
+    <div v-if="orderDetail" class="editor-grid">
+
+      <section class="address-column">
+        <h2>Pickup Address</h2>
+        <StatusBadge :status="orderDetail.pickupReasonCode || 'N/A'" />
+
+        <AddressDisplay
+            title="Original Pickup"
+            :address="orderDetail.originalPickup"
+            :formatter="formatter"
+            :show-coords="true"
+        />
+
+        <AddressDisplay
+            :title="orderDetail.pickupStoredLabel || 'Stored (TrackIT)'"
+            :address="orderDetail.pickupStoredAddress"
+            :formatter="formatter"
+            :show-coords="true"
+        />
+
+        <AddressEditor
+            title="Edit Pickup"
+            v-model:address="editedPickup"
+            :suggestions="streetSuggestions"
+            :loading-suggestions="streetLoading"
+            @street-input="onStreetInput($event, 'pickup')"
+            @select-suggestion="selectStreetSuggestion($event, 'pickup')"
+        />
+        <div class="button-bar">
+          <ActionButton
+              label="Geocode"
+              @click="handleGeocode('pickup')"
+              :disabled="isLoading"
+              :secondary="true"
+              title="Fetch Lat/Lon for the edited address"
+          />
+          <ActionButton
+              label="Save Pickup"
+              @click="handleSave('pickup')"
+              :disabled="!hasPickupChanged || isLoading"
+              class="button"
+              title="Save changes to this pickup address"
+          />
         </div>
       </section>
 
-      <div class="global-actions">
-        <button @click="handleSave('both')" :disabled="isSaving">Save Both Addresses</button>
-        <button @click="handleSaveAndNext" :disabled="isSaving">Save & Next</button>
-        <button @click="router.push('/worklist')">Cancel</button>
-      </div>
+      <section class="address-column">
+        <h2>Delivery Address</h2>
+        <StatusBadge :status="orderDetail.deliveryReasonCode || 'N/A'" />
+
+        <AddressDisplay
+            title="Original Delivery"
+            :address="orderDetail.originalDelivery"
+            :formatter="formatter"
+            :show-coords="true"
+        />
+
+        <AddressDisplay
+            :title="orderDetail.deliveryStoredLabel || 'Stored (TrackIT)'"
+            :address="orderDetail.deliveryStoredAddress"
+            :formatter="formatter"
+            :show-coords="true"
+        />
+
+        <AddressEditor
+            title="Edit Delivery"
+            v-model:address="editedDelivery"
+            :suggestions="streetSuggestions"
+            :loading-suggestions="streetLoading"
+            @street-input="onStreetInput($event, 'delivery')"
+            @select-suggestion="selectStreetSuggestion($event, 'delivery')"
+        />
+        <div class="button-bar">
+          <ActionButton
+              label="Geocode"
+              @click="handleGeocode('delivery')"
+              :disabled="isLoading"
+              :secondary="true"
+              title="Fetch Lat/Lon for the edited address"
+          />
+          <ActionButton
+              label="Save Delivery"
+              @click="handleSave('delivery')"
+              :disabled="!hasDeliveryChanged || isLoading"
+              class="button"
+              title="Save changes to this delivery address"
+          />
+        </div>
+      </section>
+
+      <section class="bottom-section">
+
+        <h3>Map Preview</h3>
+        <div ref="mapContainer" class="map-container card">
+          Map is initializing...
+        </div>
+
+        <div class="main-action-bar">
+          <ActionButton
+              label="Save Both"
+              @click="handleSave('both')"
+              :disabled="!hasAnyChanged || isLoading"
+              class="button"
+              title="Save changes to both addresses"
+          />
+          <ActionButton
+              label="Resubmit Verification"
+              @click="handleResubmit"
+              :disabled="isLoading"
+              class="button secondary"
+              title="Use this if TrackIT aliases were fixed *after* this order was processed."
+          />
+        </div>
+      </section>
 
     </div>
   </div>
 </template>
 
 <style scoped>
-.correction-editor { padding: 20px; }
-.error-message { color: red; margin-bottom: 15px; }
-.editor-content h2, .editor-content h3 { margin-bottom: 10px; }
-.address-sections { display: flex; flex-direction: column; gap: 30px; margin-top: 20px; }
-.address-section { border: 1px solid #eee; padding: 15px; border-radius: 5px; }
-.address-comparison { display: flex; gap: 15px; }
-.address-column { flex: 1; min-width: 0; } /* Allow shrinking */
-.address-column h4 { margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-.address-column pre { background-color: #f8f8f8; padding: 10px; border-radius: 3px; font-size: 0.9em; white-space: pre-wrap; word-break: break-all; }
-.address-column ul { list-style: none; padding: 0; margin: 0; }
-.address-column li { border-bottom: 1px dashed #eee; padding-bottom: 10px; margin-bottom: 10px; }
-.address-column li button { margin-left: 10px; }
-.editable form label { display: block; margin-bottom: 8px; }
-.editable form input { width: 95%; padding: 5px; margin-top: 3px; }
-.map-section { margin-top: 30px; }
-.map-container { height: 400px; width: 100%; border: 1px solid #ccc; background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999; }
-.global-actions { margin-top: 30px; display: flex; gap: 10px; }
-button:disabled { cursor: not-allowed; opacity: 0.6; }
+.correction-editor {
+  /* Uses .container from theme */
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: calc(var(--spacing-unit) * 2);
+  flex-wrap: wrap;
+}
+.editor-header h1 {
+  margin: 0;
+}
+.header-details {
+  display: flex;
+  gap: var(--spacing-unit);
+  color: var(--color-text-light);
+  font-size: 0.9rem;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--spacing-unit) * 3);
+}
+
+.address-column {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-unit) * 2);
+}
+
+.bottom-section {
+  grid-column: 1 / -1; /* Span both columns */
+  margin-top: calc(var(--spacing-unit) * 2);
+}
+
+.map-container {
+  height: 400px;
+  width: 100%;
+  background-color: #f0f0f0;
+  color: var(--color-text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.button-bar {
+  display: flex;
+  gap: var(--spacing-unit);
+}
+
+.main-action-bar {
+  margin-top: calc(var(--spacing-unit) * 3);
+  padding-top: calc(var(--spacing-unit) * 2);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-unit);
+}
+
+.loading-full-page {
+  font-size: 1.5rem;
+  color: var(--color-text-light);
+  text-align: center;
+  padding: calc(var(--spacing-unit) * 10) 0;
+}
+.error-message {
+  background-color: var(--color-danger);
+  color: white;
+}
 </style>

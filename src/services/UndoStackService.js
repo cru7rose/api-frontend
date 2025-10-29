@@ -1,9 +1,11 @@
+// FILE: services/UndoStackService.js
 /**
  * ARCHITECTURE: UndoStackService provides bounded undo/redo stacks for immutable editor state snapshots.
  * It follows the manifesto by isolating time-travel mechanics with a deterministic, dependency-free API.
  * Responsibilities:
  * - Push snapshots, undo, redo, and limit memory with a maximum capacity.
  * - Expose current() without mutating returned objects.
+ * REFACTORED: Added canUndo() and canRedo() methods.
  */
 export class UndoStackService {
   constructor(capacity = 50) {
@@ -53,4 +55,16 @@ export class UndoStackService {
   current() {
     return this._current ? JSON.parse(JSON.stringify(this._current)) : null;
   }
+
+  // --- ADDED METHODS ---
+  /** Checks if an undo operation is possible. */
+  canUndo() {
+    return this._past.length > 0;
+  }
+
+  /** Checks if a redo operation is possible. */
+  canRedo() {
+    return this._future.length > 0;
+  }
+  // --- END ADDED METHODS ---
 }

@@ -4,7 +4,10 @@
  * Responsibilities:
  * - Trim whitespace, stabilize casing, and normalize postal code for PL (e.g., "00123" → "00-123").
  * - Guarantee presence of all expected fields with safe defaults.
+ *
+ * FIX: Removed erroneous circular self-import statement.
  */
+
 export class AddressNormalizer {
   constructor(defaultCountry = "PL") {
     this.defaultCountry = defaultCountry.toUpperCase();

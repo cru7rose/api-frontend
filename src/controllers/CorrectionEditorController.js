@@ -5,17 +5,24 @@
  * - Loads OrderDetail and related suggestions for pickup/delivery.
  * - Maintains editable copies of addresses, integrates optional geocoder.
  * - Applies Accept Suggestion, Use Original, Manual Edit, Save, and Save & Next.
- * - Shields UI from API details via AddressExceptionApi and from map choice via MapGeocoderAdapter.
+ * - Shields UI from API details via AddressExceptionApi and from map choice via GeocodeWithCacheController.
+ * REFACTORED: Now accepts a GeocodeWithCacheController instead of MapGeocoderAdapter.
  */
 import { Address } from "@/domain/WorkbenchModels";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
-import { MapGeocoderAdapter } from "@/adapters/MapGeocoderAdapter";
+// *** MODIFIED: Import GeocodeWithCacheController ***
+import { GeocodeWithCacheController } from "@/controllers/GeocodeWithCacheController";
+// *** REMOVED: MapGeocoderAdapter import
 
 export class CorrectionEditorController {
   constructor(api = new AddressExceptionApi(), geocoder = null) {
     this.api = api;
-    this.geocoder = geocoder instanceof MapGeocoderAdapter ? geocoder : null;
+    // *** FIX: Check for GeocodeWithCacheController instance ***
+    this.geocoder = geocoder instanceof GeocodeWithCacheController ? geocoder : null;
+    if (!this.geocoder) {
+      console.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
+    }
     this.orderId = null;
     this.detail = null;
     this.loading = false;
@@ -25,7 +32,8 @@ export class CorrectionEditorController {
   }
 
   setGeocoderAdapter(adapter) {
-    this.geocoder = adapter instanceof MapGeocoderAdapter ? adapter : null;
+    // *** FIX: Update type check ***
+    this.geocoder = adapter instanceof GeocodeWithCacheController ? adapter : null;
     return this.geocoder;
   }
 
@@ -44,22 +52,22 @@ export class CorrectionEditorController {
     }
     this.detail = res.value;
     this.editedPickup = new Address(
-      this.detail.originalPickup.street,
-      this.detail.originalPickup.houseNumber,
-      this.detail.originalPickup.postalCode,
-      this.detail.originalPickup.city,
-      this.detail.originalPickup.country,
-      this.detail.originalPickup.latitude,
-      this.detail.originalPickup.longitude
+        this.detail.originalPickup.street,
+        this.detail.originalPickup.houseNumber,
+        this.detail.originalPickup.postalCode,
+        this.detail.originalPickup.city,
+        this.detail.originalPickup.country,
+        this.detail.originalPickup.latitude,
+        this.detail.originalPickup.longitude
     );
     this.editedDelivery = new Address(
-      this.detail.originalDelivery.street,
-      this.detail.originalDelivery.houseNumber,
-      this.detail.originalDelivery.postalCode,
-      this.detail.originalDelivery.city,
-      this.detail.originalDelivery.country,
-      this.detail.originalDelivery.latitude,
-      this.detail.originalDelivery.longitude
+        this.detail.originalDelivery.street,
+        this.detail.originalDelivery.houseNumber,
+        this.detail.originalDelivery.postalCode,
+        this.detail.originalDelivery.city,
+        this.detail.originalDelivery.country,
+        this.detail.originalDelivery.latitude,
+        this.detail.originalDelivery.longitude
     );
     this.loading = false;
     return Result.ok(this.detail);
@@ -81,13 +89,13 @@ export class CorrectionEditorController {
     if (!Array.isArray(list) || !list[index]) return Result.fail(new Error("Suggestion not found."));
     const s = list[index];
     const addr = new Address(
-      s.street || "",
-      s.houseNumber || null,
-      s.postalCode || "",
-      s.city || "",
-      s.countryCode || this._defaultCountry(),
-      s.latitude ?? null,
-      s.longitude ?? null
+        s.street || "",
+        s.houseNumber || null,
+        s.postalCode || "",
+        s.city || "",
+        s.countryCode || this._defaultCountry(),
+        s.latitude ?? null,
+        s.longitude ?? null
     );
     if (side === "pickup") this.editedPickup = addr;
     if (side === "delivery") this.editedDelivery = addr;
@@ -118,20 +126,32 @@ export class CorrectionEditorController {
   }
 
   async geocodeEdited(side) {
-    if (!this.geocoder) return Result.fail(new Error("No geocoder."));
+    // *** FIX: Use GeocodeWithCacheController ***
+    if (!this.geocoder) return Result.fail(new Error("No geocoder available."));
     const addr = side === "pickup" ? this.editedPickup : this.editedDelivery;
     if (!(addr instanceof Address)) return Result.fail(new Error("No edited address."));
-    const r = await this.geocoder.geocodeAddress({
+
+    // Call the geocode method on GeocodeWithCacheController
+    const r = await this.geocoder.geocode({
       street: addr.street,
       houseNumber: addr.houseNumber,
       postalCode: addr.postalCode,
       city: addr.city,
       country: addr.country,
     });
+
     if (!r) return Result.fail(new Error("Geocode not found."));
-    addr.latitude = r.lat;
-    addr.longitude = r.lon;
-    return Result.ok({ lat: r.lat, lon: r.lon });
+
+    // GeocodeWithCacheController returns the full normalized address object
+    addr.latitude = r.latitude;
+    addr.longitude = r.longitude;
+    // Optionally update other fields if normalization is desired
+    // addr.street = r.street;
+    // addr.houseNumber = r.houseNumber;
+    // addr.postalCode = r.postalCode;
+    // addr.city = r.city;
+
+    return Result.ok({ lat: r.latitude, lon: r.longitude });
   }
 
   async saveAcceptSuggestion(side) {
