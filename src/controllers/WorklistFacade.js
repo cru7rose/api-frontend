@@ -1,5 +1,11 @@
+// ============================================================================
+// Frontend: Fix WorklistFacade import
+// FILE: src/controllers/WorklistFacade.js (Supersedes previous version)
+// REASON: Correct the case of the 'worklistStore' import to 'WorklistStore'
+//         to match the filename, fixing the Docker build failure.
+// ============================================================================
 // FILE: src/controllers/WorklistFacade.js
-import { useWorklistStore } from "@/stores/worklistStore";
+import { useWorklistStore } from "@/stores/WorklistStore"; // *** CORRECTED FILE CASE ***
 import { PollingService } from "@/services/PollingService";
 import { Result } from "@/domain/Result";
 
