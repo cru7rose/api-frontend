@@ -5,8 +5,8 @@
 //         to match the filename, fixing the Docker build failure.
 // ============================================================================
 // FILE: src/controllers/WorklistFacade.js
-import { useWorklistStore } from "@/stores/WorklistStore"; // *** CORRECTED FILE CASE ***
-import { PollingService } from "@/services/PollingService";
+import { useWorklistStore } from "@/stores/WorklistStore.js"; // *** CORRECTED FILE CASE ***
+import { PollingService } from "@/services/PollingService.js";
 import { Result } from "@/domain/Result";
 
 export class WorklistFacade {

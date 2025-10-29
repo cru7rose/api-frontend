@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useWorklistStore } from '@/stores/worklistStore';
+import { useWorklistStore } from "@/stores/WorklistStore.js";
 import { storeToRefs } from 'pinia';
 import { EditorNavigationController } from '@/controllers/EditorNavigationController';
 import StatusBadge from '@/components/common/StatusBadge.vue';

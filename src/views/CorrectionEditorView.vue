@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch, provide, nextTick } from 'vue'; // Import nextTick
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
-import { useWorklistStore } from '@/stores/worklistStore';
+import { useWorklistStore } from "@/stores/WorklistStore.js";
 import { IntegrationOrchestrator } from '@/controllers/IntegrationOrchestrator';
 import { EditorSessionStore } from '@/stores/EditorSessionStore';
 import { Address } from '@/domain/WorkbenchModels';
