@@ -1,7 +1,3 @@
-<!-- =========================================================================
-views/LoginView.vue — Minimal, production-friendly login screen
-Wires ONLY to the canonical store so the request path is /auth/login.
-============================================================================= -->
 <template>
   <div class="min-h-screen flex items-center justify-center bg-white">
     <div class="w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6">
@@ -11,18 +7,31 @@ Wires ONLY to the canonical store so the request path is /auth/login.
       <form @submit.prevent="onSubmit" class="space-y-4">
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">Username</label>
-          <input v-model="username" type="text" autocomplete="username" required
-                 class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
-          <input v-model="password" type="password" autocomplete="current-password" required
-                 class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              required
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
 
-        <button type="submit"
-                :disabled="submitting"
-                class="w-full rounded-xl bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-semibold py-2 transition">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
+          <input
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <button
+            type="submit"
+            :disabled="submitting"
+            class="w-full rounded-xl bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-semibold py-2 transition"
+        >
           <span v-if="!submitting">Sign in</span>
           <span v-else>Signing in…</span>
         </button>
@@ -61,3 +70,5 @@ async function onSubmit() {
   }
 }
 </script>
+
+<!-- Intentionally no <style> block to avoid PostCSS mis-parse while you stabilize. -->
