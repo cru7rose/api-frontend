@@ -1,99 +1,3 @@
-<template>
-  <div class="p-4 sm:p-6 lg:p-8">
-    <div v-if="state.loading" class="text-center">
-      <p>Loading order details...</p>
-    </div>
-    <div v-else-if="state.error" class="text-red-500 text-center">
-      <p>
-        Failed to load order details: {{ state.error }}
-        <span v-if="orderId"> (ID: {{ orderId }})</span>
-      </p>
-    </div>
-
-    <div v-else-if="state.detail" class="space-y-8">
-      <PageHeader
-          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
-          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
-      />
-
-      <div class="mt-8">
-        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
-        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
-          <p>
-            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-          </p>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AddressCorrectionCard
-            title="Pickup Address"
-            side="pickup"
-            :original-address="state.detail.originalPickup"
-            :stored-address="state.detail.pickupStoredAddress"
-            :reason-code="state.detail.pickupReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedPickup"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('pickup', $event)"
-            @geocode="handleGeocode('pickup')"
-            @save="handleSave('pickup')"
-            @use-original="handleUseOriginal('pickup')"
-        />
-
-        <AddressCorrectionCard
-            title="Delivery Address"
-            side="delivery"
-            :original-address="state.detail.originalDelivery"
-            :stored-address="state.detail.deliveryStoredAddress"
-            :reason-code="state.detail.deliveryReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedDelivery"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('delivery', $event)"
-            @geocode="handleGeocode('delivery')"
-            @save="handleSave('delivery')"
-            @use-original="handleUseOriginal('delivery')"
-        />
-      </div>
-
-      <div
-          v-if="isPending"
-          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
-      >
-        <div class="flex items-center">
-          <input
-              id="applyToSimilar"
-              type="checkbox"
-              v-model="applyToSimilar"
-              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
-          >Apply this correction to all similar pending errors</label
-          >
-        </div>
-
-        <div class="flex items-center space-x-2">
-          <button
-              @click="handleSave('both')"
-              :disabled="state.saveLoading"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
-          >
-            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
-          </button>
-        </div>
-      </div>
-      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
-        <p class="font-semibold text-gray-700 dark:text-gray-200">
-          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
-          {{ state.detail.processingStatus }})
-        </p>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup>
 // *** Import 'watch' ***
 import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
@@ -233,7 +137,11 @@ async function loadOrderData() {
     // Setting these will trigger the 'watch' block
     state.detail = snap.detail;
     state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.img.DbyHtKIl.js:30;
+
+    // *** THIS IS THE FIX ***
+    // state.editedDelivery = snap.img.DbyHtKIl.js:30; // <-- BAD
+    state.editedDelivery = snap.editedDelivery; // <-- GOOD
+    // *** END FIX ***
 
   } else {
     state.error = result.error.message;
