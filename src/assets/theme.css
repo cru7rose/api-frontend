@@ -1,124 +1,86 @@
-/* ============================================================================
-   DANXILS Yellow–Blue UI System
-   - White background baseline
-   - Yellow & Blue accents
-   - Minimal, modern components via @apply
-   - Safe, semantic class names: .btn, .input, .card, .status, etc.
-   ========================================================================== */
+/* DANXILS yellow–blue theme. No @layer base here. */
 
-@layer base {
-  :root {
-    --brand-yellow:  #fde047;     /* yellow-300 */
-    --brand-yellow-600: #ca8a04;  /* yellow-600 */
-    --brand-blue:    #2563eb;     /* blue-600 */
-    --brand-blue-700:#1d4ed8;     /* blue-700 */
+:root {
+  /* Brand colors */
+  --brand-yellow: #facc15; /* tailwind yellow-400-ish */
+  --brand-yellow-strong: #eab308; /* yellow-500 */
+  --brand-blue:   #2563eb; /* blue-600 */
+  --brand-blue-strong: #1d4ed8; /* blue-700 */
 
-    --bg-page:       #ffffff;
-    --text:          #0f172a;     /* slate-900 */
-    --text-dim:      #64748b;     /* slate-500 */
-    --border:        #e2e8f0;     /* slate-200 */
-    --surface:       #ffffff;
-    --surface-2:     #f8fafc;     /* slate-50 */
-    --focus:         rgba(37, 99, 235, 0.35);  /* blue focus ring */
-    --shadow:        0 10px 15px -3px rgba(15,23,42,.08), 0 4px 6px -2px rgba(15,23,42,.05);
-  }
+  /* Neutrals */
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb; /* slate-200 */
+  --color-text: #0f172a;   /* slate-900 */
+  --color-text-muted: #64748b; /* slate-500 */
 
-  html, body {
-    background-color: var(--bg-page);
-    color: var(--text);
-  }
+  /* Semantic accents */
+  --color-success: #16a34a; /* green-600 */
+  --color-danger:  #dc2626; /* red-600 */
+  --color-warning: var(--brand-yellow-strong);
+  --color-info:    var(--brand-blue);
 
-  /* Container helper (optional) */
-  .container {
-    @apply mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8;
-  }
-
-  /* Focus style for accessibility */
-  :where(button, a, input, select, textarea).focus-visible,
-  :where(button, a, input, select, textarea):focus-visible {
-    outline: 0;
-    box-shadow: 0 0 0 3px var(--focus);
-  }
+  /* Sizing */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --spacing: 12px;
 }
 
+/* Global surface look (plain CSS, not @layer base) */
+html, body, #app {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Components */
 @layer components {
-  /* Inputs */
-  .input {
-    @apply h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm text-[var(--text)]
-    placeholder:text-[var(--text-dim)]
-    focus:outline-none focus:ring-2 focus:ring-blue-500/30;
-  }
-  .select { @apply input pr-8; }
-  .textarea { @apply input h-auto py-2; }
-
-  /* Cards & Surfaces */
-  .card {
-    @apply rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm;
-  }
-  .card-body { @apply p-4 sm:p-5; }
-  .panel { @apply rounded-xl bg-[var(--surface)] shadow-sm; }
-
-  /* Buttons */
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 h-9 text-sm font-medium
-    transition select-none;
-  }
   .btn-primary {
-    @apply btn text-[var(--text)] bg-[var(--brand-yellow)] hover:bg-yellow-400;
+    @apply inline-flex items-center justify-center h-10 px-4 font-medium rounded-xl;
+    background: var(--brand-yellow);
+    color: #111827;
+    border: 1px solid color-mix(in oklab, var(--brand-yellow), #000 10%);
+    transition: filter .15s ease, transform .02s ease;
   }
-  .btn-ghost {
-    @apply btn text-[var(--text)] bg-transparent hover:bg-slate-100 border border-[var(--border)];
-  }
+  .btn-primary:hover { filter: brightness(0.98); }
+  .btn-primary:active { transform: translateY(0.5px); }
+
   .btn-blue {
-    @apply btn text-white bg-[var(--brand-blue)] hover:bg-[var(--brand-blue-700)];
+    @apply inline-flex items-center justify-center h-9 px-3 text-white font-medium rounded-lg;
+    background: var(--brand-blue);
   }
-  .btn-danger {
-    @apply btn text-white bg-red-600 hover:bg-red-700;
-  }
-  .btn-icon {
-    @apply inline-flex items-center justify-center rounded-lg h-9 w-9 hover:bg-slate-100;
-  }
-  .btn-sm   { @apply h-8 px-2 text-xs rounded-md; }
-  .btn-lg   { @apply h-10 px-4; }
+  .btn-blue:hover { background: var(--brand-blue-strong); }
 
-  /* Table */
-  .table { @apply w-full text-sm; }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center h-9 px-3 rounded-lg text-slate-700;
+  }
+  .btn-ghost:hover { @apply bg-slate-100; }
+
+  .card {
+    @apply bg-white border border-slate-200 shadow-sm;
+    border-radius: var(--radius);
+  }
+
   .th {
-    @apply text-left font-semibold px-4 py-3 text-slate-700;
-    background-image: linear-gradient(to right, #fffbeb, #eff6ff); /* yellow-50 → blue-50 */
-    border-bottom: 1px solid var(--border);
+    @apply text-left font-semibold px-4 py-3 border-b border-slate-200;
+    background: linear-gradient(90deg, color-mix(in oklab, var(--brand-yellow) 18%, #fff), color-mix(in oklab, var(--brand-blue) 12%, #fff));
   }
-  .td { @apply px-4 py-3 align-top text-[var(--text)]; }
-  .row {
-    @apply border-b border-[var(--border)] hover:bg-yellow-50/50 transition-colors;
-  }
+  .td { @apply px-4 py-3 align-top; }
 
-  /* Status / Pills */
   .status {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-    border border-[var(--border)];
+    @apply inline-flex items-center px-2.5 h-7 rounded-full text-xs font-medium border;
+    background: #fff;
+    border-color: var(--color-border);
+    color: var(--color-text);
   }
-  .status[data-variant="NEEDS_REVIEW"]         { @apply bg-yellow-50 text-yellow-700; }
-  .status[data-variant="PENDING_VERIFICATION"] { @apply bg-blue-50 text-blue-700; }
-  .status[data-variant="RESOLVED"]             { @apply bg-green-50 text-green-700; }
-  .status[data-variant="FAILED"]               { @apply bg-red-50 text-red-700; }
-
-  /* Headings & Section headers */
-  .section-title { @apply text-base font-semibold text-slate-900; }
-  .subtle       { @apply text-sm text-slate-500; }
-
-  /* Map frame */
-  .map-frame {
-    @apply h-[380px] w-full rounded-lg border border-[var(--border)]
-    bg-[var(--surface-2)] flex items-center justify-center text-slate-400;
-  }
-
-  /* Divider */
-  .divider { @apply h-px bg-[var(--border)]; }
+  .status[data-variant="PENDING_VERIFICATION"] { border-color: var(--brand-yellow-strong); color: #111827; background: color-mix(in oklab, var(--brand-yellow) 18%, #fff); }
+  .status[data-variant="NEEDS_REVIEW"] { border-color: var(--brand-blue-strong); color: #0b1220; background: color-mix(in oklab, var(--brand-blue) 14%, #fff); }
 }
 
+/* Utilities */
 @layer utilities {
-  .shadow-soft { box-shadow: var(--shadow); }
-  .muted       { @apply text-slate-500; }
-  .mono        { @apply font-mono; }
+  .surface    { background: var(--color-surface); }
+  .brand-grad { background: linear-gradient(135deg, var(--brand-yellow) 0%, var(--brand-blue) 100%); }
+  .muted      { color: var(--color-text-muted); }
+  .ring-brand { box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-blue) 30%, #fff); }
 }

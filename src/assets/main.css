@@ -1,7 +1,8 @@
-/* Import FIRST to satisfy PostCSS rule */
+/* keep all imports first */
+@import "leaflet/dist/leaflet.css";
 @import "./theme.css";
 
-/* Then Tailwind layers */
+/* tailwind layers after imports */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
