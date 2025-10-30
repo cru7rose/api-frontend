@@ -95,20 +95,21 @@
 </template>
 
 <script setup>
-import {ref, reactive, computed, onMounted, onUnmounted, inject, nextTick} from 'vue';
-import {useRoute, useRouter} from 'vue-router';
-import {useToast} from '@/composables/useToast.js';
+// *** Import 'watch' ***
+import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from '@/composables/useToast.js';
 import PageHeader from '@/components/PageHeader.vue';
 import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
 
 // Import Manifesto architecture controllers
-import {MapController} from "@/controllers/MapController.js";
-import {EditorFacade} from "@/controllers/EditorFacade.js";
-import {SaveFlowController} from "@/controllers/SaveFlowController.js";
-import {IdempotentSaveController} from "@/controllers/IdempotentSaveController.js";
-import {EditorCommandBus} from "@/controllers/EditorCommandBus.js";
-import {useWorklistStore} from '@/stores/WorklistStore.js'; // To get the queue
-import {Address} from '@/domain/WorkbenchModels.js';
+import { MapController } from "@/controllers/MapController.js";
+import { EditorFacade } from "@/controllers/EditorFacade.js";
+import { SaveFlowController } from "@/controllers/SaveFlowController.js";
+import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
+import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
+import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
+import { Address } from '@/domain/WorkbenchModels.js';
 
 // === Injections ===
 const orchestrator = inject("orchestrator");
@@ -154,10 +155,6 @@ onMounted(async () => {
     return;
   }
 
-  // *** FIX: DO NOT initialize map here. ***
-  // We must wait for state.detail to be populated so the <div> exists.
-  // Map init is moved to loadOrderData()
-
   // 1. Initialize Editor Facade (mapController is null for now)
   editorFacade = orchestrator.getEditor(null);
 
@@ -166,7 +163,7 @@ onMounted(async () => {
   saveFlow = new SaveFlowController(editorFacade, worklistStore, saveController);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
 
-  // 3. Load Order Data (this will now also init the map)
+  // 3. Load Order Data (this will trigger the 'watch' block to init the map)
   await loadOrderData();
 });
 
@@ -177,71 +174,74 @@ onUnmounted(() => {
   }
 });
 
-// === Methods ===
-async function loadOrderData() {
-  state.loading = true;
-  state.error = null;
-
-  // --- This is the fix ---
-  // Destroy the old map if we are reloading (e.g., navigating from editor to editor)
-  if (mapController) {
-    await mapController.destroy();
-    mapController = null;
-    editorFacade.preview = null;
-  }
-  // --- End fix ---
-
-  const result = await editorFacade.load(orderId.value);
-
-  if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
-    state.detail = snap.detail;
-    state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.editedDelivery;
-
-    // *** FIX: Initialize map controller *after* state.detail exists ***
+// *** FIX: Use a watch to initialize the map ***
+watch(() => state.detail, async (newValue, oldValue) => {
+  // Only run this when the detail goes from null to populated
+  if (newValue && !oldValue) {
+    log.info("State detail populated, initializing map...");
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
 
-      await nextTick(); // Wait for DOM to render the v-if="state.detail" block
+      // Wait for Vue to render the v-if="state.detail" block
+      await nextTick();
 
       if (mapContainer.value) {
-        await mapController.init(mapContainer.value, {lat: 52.23, lon: 21.01, zoom: 6});
-        // Now that map is real, inject it into the facade's previewer
-        editorFacade.preview = orchestrator.createPreviewController(mapController);
-        log.info("MapController initialized successfully.");
-      } else {
-        throw new Error("Map container DOM element not found even after nextTick.");
-      }
-    } catch (err) {
-      log.error("Failed to initialize MapController:", err);
-      toast.error("Failed to load map: " + err.message, 10000);
-      // Continue without map if it fails
-    }
-    // *** END FIX ***
+        // Init the map
+        await mapController.init(mapContainer.value, { lat: 52.23, lon: 21.01, zoom: 6 });
 
-    // Facade's 'load' method already drew the route, but the map didn't exist yet.
-    // We must re-draw it now.
-    if (editorFacade.preview) {
-      try {
+        // Inject the map into the facade
+        editorFacade.preview = orchestrator.createPreviewController(mapController);
+        log.info("MapController initialized and injected into facade.");
+
+        // Now draw the initial route
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
             state.editedDelivery
         );
         log.info("Initial route and markers drawn.");
-      } catch (e) {
-        log.error("Failed to draw initial route:", e);
-      }
-    }
 
-    // We just need to fetch the stats (dist/duration) for display.
-    await refreshRouteInfo();
+        // And fetch route stats
+        await refreshRouteInfo();
+
+      } else {
+        throw new Error("Map container DOM element not found even after watch/nextTick.");
+      }
+    } catch (err) {
+      log.error("Failed to initialize MapController:", err);
+      toast.error("Failed to load map: " + err.message, 10000);
+    }
+  }
+});
+
+// === Methods ===
+async function loadOrderData() {
+  state.loading = true;
+  state.error = null;
+
+  // Destroy the old map if we are reloading (e.g., navigating from editor to editor)
+  if (mapController) {
+    await mapController.destroy();
+    mapController = null;
+    if (editorFacade) editorFacade.preview = null;
+  }
+
+  const result = await editorFacade.load(orderId.value);
+
+  if (result.ok) {
+    const snap = editorFacade.snapshot().editor;
+    // Setting these will trigger the 'watch' block
+    state.detail = snap.detail;
+    state.editedPickup = snap.editedPickup;
+    state.editedDelivery = snap.img.DbyHtKIl.js:30;
 
   } else {
     state.error = result.error.message;
     toast.error(`Failed to load order: ${state.error}`, 10000);
+    state.loading = false; // Stop loading on error
   }
+  // state.loading = false is now set inside the watch block or here on error
+  // We set it to false here, but the watch block will run async
   state.loading = false;
 }
 
