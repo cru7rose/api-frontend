@@ -66,7 +66,7 @@ import '@/assets/theme.css';
 
     // === START FIX: DEFINE AND PROVIDE CONTROLLERS ===
     const auth = new AuthController(); // <-- Define auth controller [cite: 5416]
-    const orchestrator = new IntegrationOrchestrator(geoRuntime, null); [cite: 5417, 5419]
+    const orchestrator = new IntegrationOrchestrator(geoRuntime, null);
 
     app.provide("orchestrator", orchestrator);
     app.provide("auth", auth); // <-- Provide defined auth controller
