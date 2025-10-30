@@ -1,8 +1,8 @@
-/* DANXILS yellow–blue theme. No @layer base here. */
+/* DANXILS yellow–blue theme (no Tailwind @layer used) */
 
 :root {
-  /* Brand colors */
-  --brand-yellow: #facc15; /* tailwind yellow-400-ish */
+  /* Brand */
+  --brand-yellow: #facc15; /* yellow-400 */
   --brand-yellow-strong: #eab308; /* yellow-500 */
   --brand-blue:   #2563eb; /* blue-600 */
   --brand-blue-strong: #1d4ed8; /* blue-700 */
@@ -14,73 +14,82 @@
   --color-text: #0f172a;   /* slate-900 */
   --color-text-muted: #64748b; /* slate-500 */
 
-  /* Semantic accents */
-  --color-success: #16a34a; /* green-600 */
-  --color-danger:  #dc2626; /* red-600 */
+  /* Semantic */
+  --color-success: #16a34a;
+  --color-danger:  #dc2626;
   --color-warning: var(--brand-yellow-strong);
   --color-info:    var(--brand-blue);
 
-  /* Sizing */
+  /* Layout */
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
   --spacing: 12px;
 }
 
-/* Global surface look (plain CSS, not @layer base) */
+/* Global */
 html, body, #app {
   background: var(--color-bg);
   color: var(--color-text);
 }
 
-/* Components */
-@layer components {
-  .btn-primary {
-    @apply inline-flex items-center justify-center h-10 px-4 font-medium rounded-xl;
-    background: var(--brand-yellow);
-    color: #111827;
-    border: 1px solid color-mix(in oklab, var(--brand-yellow), #000 10%);
-    transition: filter .15s ease, transform .02s ease;
-  }
-  .btn-primary:hover { filter: brightness(0.98); }
-  .btn-primary:active { transform: translateY(0.5px); }
+/* Buttons */
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 40px; padding: 0 16px; font-weight: 600; border-radius: 12px;
+  background: var(--brand-yellow); color: #111827;
+  border: 1px solid color-mix(in oklab, var(--brand-yellow), #000 10%);
+  transition: filter .15s ease, transform .02s ease;
+}
+.btn-primary:hover { filter: brightness(0.98); }
+.btn-primary:active { transform: translateY(0.5px); }
 
-  .btn-blue {
-    @apply inline-flex items-center justify-center h-9 px-3 text-white font-medium rounded-lg;
-    background: var(--brand-blue);
-  }
-  .btn-blue:hover { background: var(--brand-blue-strong); }
+.btn-blue {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px; padding: 0 12px; font-weight: 600; border-radius: 10px;
+  background: var(--brand-blue); color: #fff;
+}
+.btn-blue:hover { background: var(--brand-blue-strong); }
 
-  .btn-ghost {
-    @apply inline-flex items-center justify-center h-9 px-3 rounded-lg text-slate-700;
-  }
-  .btn-ghost:hover { @apply bg-slate-100; }
+.btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px; padding: 0 12px; border-radius: 10px; color: #334155;
+}
+.btn-ghost:hover { background: #f1f5f9; }
 
-  .card {
-    @apply bg-white border border-slate-200 shadow-sm;
-    border-radius: var(--radius);
-  }
+/* Surfaces */
+.card {
+  background: #fff; border: 1px solid var(--color-border);
+  border-radius: var(--radius); box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
 
-  .th {
-    @apply text-left font-semibold px-4 py-3 border-b border-slate-200;
-    background: linear-gradient(90deg, color-mix(in oklab, var(--brand-yellow) 18%, #fff), color-mix(in oklab, var(--brand-blue) 12%, #fff));
-  }
-  .td { @apply px-4 py-3 align-top; }
+/* Tables */
+.th {
+  text-align: left; font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(90deg,
+  color-mix(in oklab, var(--brand-yellow) 18%, #fff),
+  color-mix(in oklab, var(--brand-blue) 12%, #fff)
+  );
+}
+.td { padding: 12px 16px; vertical-align: top; }
 
-  .status {
-    @apply inline-flex items-center px-2.5 h-7 rounded-full text-xs font-medium border;
-    background: #fff;
-    border-color: var(--color-border);
-    color: var(--color-text);
-  }
-  .status[data-variant="PENDING_VERIFICATION"] { border-color: var(--brand-yellow-strong); color: #111827; background: color-mix(in oklab, var(--brand-yellow) 18%, #fff); }
-  .status[data-variant="NEEDS_REVIEW"] { border-color: var(--brand-blue-strong); color: #0b1220; background: color-mix(in oklab, var(--brand-blue) 14%, #fff); }
+/* Badges */
+.status {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--color-border);
+  background: #fff; color: var(--color-text);
+}
+.status[data-variant="PENDING_VERIFICATION"] {
+  border-color: var(--brand-yellow-strong); color: #111827;
+  background: color-mix(in oklab, var(--brand-yellow) 18%, #fff);
+}
+.status[data-variant="NEEDS_REVIEW"] {
+  border-color: var(--brand-blue-strong); color: #0b1220;
+  background: color-mix(in oklab, var(--brand-blue) 14%, #fff);
 }
 
 /* Utilities */
-@layer utilities {
-  .surface    { background: var(--color-surface); }
-  .brand-grad { background: linear-gradient(135deg, var(--brand-yellow) 0%, var(--brand-blue) 100%); }
-  .muted      { color: var(--color-text-muted); }
-  .ring-brand { box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-blue) 30%, #fff); }
-}
+.surface { background: var(--color-surface); }
+.brand-grad { background: linear-gradient(135deg, var(--brand-yellow) 0%, var(--brand-blue) 100%); }
+.muted { color: var(--color-text-muted); }
+.ring-brand { box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-blue) 30%, #fff); }
