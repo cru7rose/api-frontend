@@ -45,6 +45,7 @@ export class MapViewportPolicyController {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
 
     try {
+      if (!this.map) throw new Error("MapController not available");
       if (side === 'pickup') {
         await this.map.updatePickupMarker(lat, lon, true);
       } else if (side === 'delivery') {
@@ -66,6 +67,11 @@ export class MapViewportPolicyController {
    * @param {object} deliveryAddr
    */
   async showAndFitRoute(pickupAddr, deliveryAddr) {
+    if (!this.map) {
+      console.error("[MapViewportPolicy] Cannot show route, map is not initialized.");
+      return false;
+    }
+
     const pLat = Number(pickupAddr?.latitude);
     const pLon = Number(pickupAddr?.longitude);
     const dLat = Number(deliveryAddr?.latitude);
