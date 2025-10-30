@@ -1,7 +1,6 @@
 // ============================================================================
-// Frontend: Compatibility re-export for legacy imports
-// FILE: src/stores/authStore.js
-// REASON: Prevent duplicate Pinia store definitions. Keep all existing imports
-//         working by re-exporting the canonical store from auth.js.
+// stores/authStore.js — Compatibility shim
+// Any legacy imports using '@/stores/authStore' will resolve to the canonical
+// store from '@/stores/auth' to prevent "two stores" divergence.
 // ============================================================================
-export { useAuthStore } from './auth.js';
+export * from "./auth.js";

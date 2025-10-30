@@ -4,57 +4,63 @@
 ================================================================================
 
 <template>
-  <div class="flex h-screen bg-gray-100 dark:bg-gray-900">
-    <Sidebar :is-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+  <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <!-- App shell (hidden on routes with meta.hideShell) -->
+    <div v-if="showShell" class="flex h-screen">
+      <SidebarNav />
 
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <AppHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <AppHeader @toggle-sidebar="toggleSidebar" />
+        <main class="flex-1 overflow-x-hidden overflow-y-auto">
+          <router-view v-slot="{ Component }">
+            <transition name="fade" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </main>
+      </div>
 
-      <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
-      </main>
+      <Notification />
     </div>
 
-    <Notification />
+    <!-- Auth/public screens (e.g., /login) -->
+    <div v-else>
+      <router-view />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, provide } from 'vue'
+import { ref, onMounted, provide, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.js'
-
-// Keep your existing Sidebar/Notification locations if they exist there
-import Sidebar from '@/components/Sidebar.vue'
-import AppHeader from '@/components/layout/AppHeader.vue'  // ✅ fixed path
+import AppHeader from '@/components/layout/AppHeader.vue'
+import SidebarNav from '@/components/layout/SidebarNav.vue'
 import Notification from '@/components/Notification.vue'
-
 import { useNotificationStore } from '@/stores/notification.js'
 
+const route = useRoute()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 
 // Provide Pinia auth for any legacy inject('auth') usages
 provide('auth', authStore)
 
-const sidebarOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
+// Show shell on routes that don't explicitly hide it (e.g., /login has meta.hideShell)
+const showShell = computed(() => !route.meta?.hideShell)
 
-// Provide a simple notification helper
+// Optional: hook up mobile/off-canvas behavior later
+const isSidebarOpen = ref(true)
+const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value }
+
 provide('showNotification', (message, type = 'info', duration = 5000) => {
   notificationStore.show(message, type, duration)
 })
 
 onMounted(() => {
   authStore.checkAuth?.()
-
-  // Respect OS dark mode unless user overrides
-  if (
-      localStorage.theme === 'dark' ||
-      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && prefersDark)) {
     document.documentElement.classList.add('dark')
   } else {
     document.documentElement.classList.remove('dark')
@@ -63,10 +69,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.fade-enter-active,
-.fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from,
-.fade-leave-to { opacity: 0; }
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
 
 
@@ -78,13 +82,15 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import { createRouter } from '@/router';
-import '@/assets/theme.css';
+
+// ✅ Load Tailwind layers + theme tokens
+import '@/assets/main.css';
 
 const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 
-const router = createRouter(); // pass geoRuntime if needed later
+const router = createRouter();
 app.use(router);
 
 router.isReady().then(() => {
@@ -520,26 +526,19 @@ export const useAddressUploadStore = defineStore('addressUpload', {
 ================================================================================
 
 // ============================================================================
-// Frontend: Fix auth.js store (Supersedes previous version)
-// FILE: src/stores/auth.js
-// REASON: Corrects the import for the API client (default export)
-//         and uses the correct method for setting the auth header
-//         on the axios instance.
+// Pinia Auth Store — unified, uses AuthApi; no '/api' anywhere
 // ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
+import api from '@/services/Api.js';
 import { AuthApi } from '@/services/AuthApi';
-// *** THIS IS THE FIX ***
-import apiClient from '@/services/Api.js'; // <-- Import the default export
-// *** END FIX ***
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USERNAME_KEY = 'auth_username';
 
 export const useAuthStore = defineStore('auth', () => {
-    // --- State ---
     const accessToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || null);
     const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || null);
     const username = ref(localStorage.getItem(USERNAME_KEY) || null);
@@ -547,305 +546,113 @@ export const useAuthStore = defineStore('auth', () => {
     const authError = ref(null);
     const redirectPath = ref(null);
 
-    // --- Getters ---
     const isAuthenticated = computed(() => !!accessToken.value);
     const isAdmin = computed(() => roles.value.includes('ADMIN'));
 
-    // --- Internal Helpers ---
-    function _decodeToken(token) {
-        try {
-            return jwtDecode(token);
-        } catch (e) {
-            console.error("Failed to decode token:", e);
-            return null;
-        }
-    }
+    const setAxiosAuthHeader = (token) => {
+        if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        else delete api.defaults.headers.common['Authorization'];
+    };
 
-    function _setAuthData(authData) {
-        const token = authData.accessToken;
-        const refToken = authData.refreshToken;
-        const user = authData.username;
-        const decoded = _decodeToken(token);
+    const decode = (t) => { try { return jwtDecode(t); } catch { return null; } };
 
-        accessToken.value = token;
-        refreshToken.value = refToken;
-        username.value = user;
+    function setAuthData({ accessToken: at, refreshToken: rt, username: un }) {
+        accessToken.value = at;
+        refreshToken.value = rt;
+        username.value = un ?? username.value;
+
+        const decoded = decode(at);
         roles.value = decoded?.roles || [];
 
-        localStorage.setItem(AUTH_TOKEN_KEY, token);
-        localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
-        localStorage.setItem(USERNAME_KEY, user);
+        localStorage.setItem(AUTH_TOKEN_KEY, at);
+        localStorage.setItem(REFRESH_TOKEN_KEY, rt ?? '');
+        if (un) localStorage.setItem(USERNAME_KEY, un);
 
-        // --- FIX: Set header on the imported axios instance ---
-        if (token) {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        } else {
-            delete apiClient.defaults.headers.common['Authorization'];
-        }
-        // --- END FIX ---
-
+        setAxiosAuthHeader(at);
         authError.value = null;
     }
 
-    function _clearAuthData() {
+    function clearAuthData() {
         accessToken.value = null;
         refreshToken.value = null;
         username.value = null;
         roles.value = [];
-
         localStorage.removeItem(AUTH_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
-
-        // --- FIX: Clear the auth header ---
-        delete apiClient.defaults.headers.common['Authorization'];
-        // --- END FIX ---
-
+        setAxiosAuthHeader(null);
         authError.value = null;
     }
 
-    // --- Actions ---
     const authApi = new AuthApi();
 
-    async function login(username, password) {
+    async function login(un, pw) {
         try {
             authError.value = null;
-            const result = await authApi.login(username, password);
-
-            if (result.ok) {
-                _setAuthData(result.value);
-                return true;
-            } else {
-                authError.value = result.error.message;
-                _clearAuthData();
-                return false;
-            }
+            const result = await authApi.login(un, pw);
+            if (result.ok) { setAuthData(result.value); return true; }
+            authError.value = result.error?.message ?? 'Login failed';
+            clearAuthData();
+            return false;
         } catch (e) {
-            authError.value = "An unexpected error occurred during login.";
-            _clearAuthData();
+            authError.value = e?.message || 'Login failed';
+            clearAuthData();
             return false;
         }
     }
 
+    async function refresh() {
+        if (!refreshToken.value) return false;
+        try {
+            const result = await authApi.refresh(refreshToken.value);
+            if (result.ok) { setAuthData(result.value); return true; }
+        } catch { /* ignore */ }
+        clearAuthData();
+        return false;
+    }
+
     function logout() {
-        _clearAuthData();
-        redirectPath.value = null; // Clear redirect path on logout
+        try { authApi.logout(); } catch { /* ignore */ }
+        clearAuthData();
+        redirectPath.value = null;
     }
 
     function checkAuth() {
-        // This is called on app load
-        const token = accessToken.value;
-        if (token) {
-            const decoded = _decodeToken(token);
-            if (decoded && decoded.exp * 1000 > Date.now()) {
-                // Token is valid and not expired
-                roles.value = decoded.roles || [];
-                // --- FIX: Set header on the imported axios instance ---
-                apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                // --- END FIX ---
-                authError.value = null;
-            } else {
-                // Token is expired or invalid
-                console.warn("Auth token is expired or invalid, logging out.");
-                _clearAuthData();
-            }
+        const t = accessToken.value;
+        if (!t) { clearAuthData(); return; }
+        const decoded = decode(t);
+        if (decoded && decoded.exp * 1000 > Date.now()) {
+            roles.value = decoded.roles || [];
+            setAxiosAuthHeader(t);
+            authError.value = null;
         } else {
-            _clearAuthData();
+            clearAuthData();
         }
     }
 
-    function setRedirect(path) {
-        redirectPath.value = path;
-    }
-
-    function popRedirect() {
-        const path = redirectPath.value;
-        redirectPath.value = null;
-        return path || '/worklist'; // Default redirect
-    }
+    function setRedirect(path) { redirectPath.value = path; }
+    function popRedirect() { const p = redirectPath.value; redirectPath.value = null; return p || '/worklist'; }
 
     return {
-        accessToken,
-        refreshToken,
-        username,
-        roles,
-        authError,
-        redirectPath,
-        isAuthenticated,
-        isAdmin,
-        login,
-        logout,
-        checkAuth,
-        setRedirect,
-        popRedirect,
+        accessToken, refreshToken, username, roles, authError, redirectPath,
+        isAuthenticated, isAdmin,
+        login, refresh, logout, checkAuth, setRedirect, popRedirect,
     };
 });
+
 
 ================================================================================
 ### PLIK: stores/authStore.js
 ================================================================================
 
 // ============================================================================
-// Frontend: Fix authStore.js store (Supersedes previous version)
+// Frontend: Compatibility re-export for legacy imports
 // FILE: src/stores/authStore.js
-// REASON: Corrects the import for the API client (default export)
-//         and uses the correct method for setting the auth header.
-//         (This file is a duplicate of auth.js but required by other imports)
+// REASON: Prevent duplicate Pinia store definitions. Keep all existing imports
+//         working by re-exporting the canonical store from auth.js.
 // ============================================================================
-import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import { jwtDecode } from 'jwt-decode';
-import { AuthApi } from '@/services/AuthApi';
-// *** THIS IS THE FIX ***
-import apiClient from '@/services/Api.js'; // <-- Import the default export
-// *** END FIX ***
+export { useAuthStore } from './auth.js';
 
-const AUTH_TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
-const USERNAME_KEY = 'auth_username';
-
-export const useAuthStore = defineStore('auth', () => {
-  // --- State ---
-  const accessToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || null);
-  const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || null);
-  const username = ref(localStorage.getItem(USERNAME_KEY) || null);
-  const roles = ref([]);
-  const authError = ref(null);
-  const redirectPath = ref(null);
-
-  // --- Getters ---
-  const isAuthenticated = computed(() => !!accessToken.value);
-  const isAdmin = computed(() => roles.value.includes('ADMIN'));
-
-  // --- Internal Helpers ---
-  function _decodeToken(token) {
-    try {
-      return jwtDecode(token);
-    } catch (e) {
-      console.error("Failed to decode token:", e);
-      return null;
-    }
-  }
-
-  function _setAuthData(authData) {
-    const token = authData.accessToken;
-    const refToken = authData.refreshToken;
-    const user = authData.username;
-    const decoded = _decodeToken(token);
-
-    accessToken.value = token;
-    refreshToken.value = refToken;
-    username.value = user;
-    roles.value = decoded?.roles || [];
-
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
-    localStorage.setItem(USERNAME_KEY, user);
-
-    // --- FIX: Set header on the imported axios instance ---
-    if (token) {
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete apiClient.defaults.headers.common['Authorization'];
-    }
-    // --- END FIX ---
-
-    authError.value = null;
-  }
-
-  function _clearAuthData() {
-    accessToken.value = null;
-    refreshToken.value = null;
-    username.value = null;
-    roles.value = [];
-
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(USERNAME_KEY);
-
-    // --- FIX: Clear the auth header ---
-    delete apiClient.defaults.headers.common['Authorization'];
-    // --- END FIX ---
-
-    authError.value = null;
-  }
-
-  // --- Actions ---
-  const authApi = new AuthApi();
-
-  async function login(username, password) {
-    try {
-      authError.value = null;
-      const result = await authApi.login(username, password);
-
-      if (result.ok) {
-        _setAuthData(result.value);
-        return true;
-      } else {
-        authError.value = result.error.message;
-        _clearAuthData();
-        return false;
-      }
-    } catch (e) {
-      authError.value = "An unexpected error occurred during login.";
-      _clearAuthData();
-      return false;
-    }
-  }
-
-  function logout() {
-    _clearAuthData();
-    redirectPath.value = null; // Clear redirect path on logout
-  }
-
-  function checkAuth() {
-    // This is called on app load
-    const token = accessToken.value;
-    if (token) {
-      const decoded = _decodeToken(token);
-      if (decoded && decoded.exp * 1000 > Date.now()) {
-        // Token is valid and not expired
-        roles.value = decoded.roles || [];
-        // --- FIX: Set header on the imported axios instance ---
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        // --- END FIX ---
-        authError.value = null;
-      } else {
-        // Token is expired or invalid
-        console.warn("Auth token is expired or invalid, logging out.");
-        _clearAuthData();
-      }
-    } else {
-      _clearAuthData();
-    }
-  }
-
-  function setRedirect(path) {
-    redirectPath.value = path;
-  }
-
-  function popRedirect() {
-    const path = redirectPath.value;
-    redirectPath.value = null;
-    return path || '/worklist'; // Default redirect
-  }
-
-  return {
-    accessToken,
-    refreshToken,
-    username,
-    roles,
-    authError,
-    redirectPath,
-    isAuthenticated,
-    isAdmin,
-    login,
-    logout,
-    checkAuth,
-    setRedirect,
-    popRedirect,
-  };
-});
 
 ================================================================================
 ### PLIK: stores/EditorSessionStore.js
@@ -1103,7 +910,7 @@ export const useProcessingErrorsStore = defineStore('processingErrors', {
 // ARCHITECTURE: Pinia store for the new AED SFTP Admin view.
 // ============================================================================
 import { defineStore } from 'pinia';
-import apiClient from '@/services/Api.js'; // Use the shared API client
+import apiClient from '@/services/Api.js'; // Use the Shared API client
 import { ref } from 'vue';
 
 export const useAedSftpStore = defineStore('aedSftpAdmin', () => {
@@ -4269,88 +4076,6 @@ const nextPage = () => {
 </script>
 
 ================================================================================
-### PLIK: components/Sidebar.vue
-================================================================================
-
-<template>
-  <div
-      v-show="isOpen"
-      class_name="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
-      aria-hidden="true"
-      @click="$emit('toggle-sidebar')"
-  ></div>
-
-  <div
-      class_name="fixed inset-y-0 left-0 z-50 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:inset-auto lg:z-auto lg:translate-x-0"
-      :class_name="{
-      'translate-x-0': isOpen,
-      '-translate-x-full': !isOpen,
-    }"
-      style="width: 256px;"
-  >
-    <div class_name="flex flex-1 flex-col overflow-y-auto bg-gray-900 text-gray-200">
-      <div class_name="flex h-16 shrink-0 items-center justify-between px-4">
-        <h1 class_name="text-2xl font-bold text-white">DANXILS</h1>
-        <button
-            type="button"
-            class_name="-m-2.5 p-2.5 text-gray-400 lg:hidden"
-            @click="$emit('toggle-sidebar')"
-        >
-          <span class_name="sr-only">Close sidebar</span>
-          <XMarkIcon class_name="h-6 w-6" aria-hidden="true" />
-        </button>
-      </div>
-
-      <nav class_name="flex-1 space-y-2 px-2 py-4">
-        <router-link
-            v-for="item in navigation"
-            :key="item.name"
-            :to="item.href"
-            v-slot="{ href, navigate, isActive }"
-        >
-          <a
-              :href="href"
-              @click="navigate"
-              :class_name="[
-              isActive
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-              'group flex items-center gap-x-3 rounded-md p-2 text-sm font-medium leading-6',
-            ]"
-          >
-            <component :is="item.icon" class_name="h-5 w-5 shrink-0" aria-hidden="true" />
-            {{ item.name }}
-          </a>
-        </router-link>
-      </nav>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import {
-  RectangleStackIcon,
-  CogIcon,
-  ArrowPathIcon,
-  ClipboardDocumentCheckIcon,
-  DocumentTextIcon, // Added for Logs
-  XMarkIcon,
-} from '@heroicons/vue/24/outline';
-
-defineProps({
-  isOpen: Boolean,
-});
-defineEmits(['toggle-sidebar']);
-
-const navigation = [
-  { name: 'Worklist', href: '/worklist', icon: RectangleStackIcon },
-  { name: 'Logs', href: '/logs', icon: DocumentTextIcon }, // <-- NEW LOGS LINK
-  // Add more links here later if needed
-  // { name: 'Admin Panel', href: '/admin', icon: CogIcon },
-];
-</script>
-
-================================================================================
 ### PLIK: components/SidebarLink.vue
 ================================================================================
 
@@ -5227,7 +4952,7 @@ ul li.selected { background-color: #e0e0ff; }
 </style>
 
 ================================================================================
-### PLIK: components/shared/BaseModal.vue
+### PLIK: components/Shared/BaseModal.vue
 ================================================================================
 
 <template>
@@ -5249,8 +4974,8 @@ ul li.selected { background-color: #e0e0ff; }
               enter-from="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
               enter-to="opacity-100 translate-y-0 sm:scale-100"
               leave="ease-in duration-150"
-              leave-from="opacity-100 translate-y-0 sm:scale-100"
-              leave-to="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              leave-from-class="opacity-100 translate-y-0 sm:scale-100"
+              leave-to-class="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
           >
             <DialogPanel
                 class="w-full max-w-lg transform overflow-hidden rounded-2xl bg-white text-left align-middle shadow-xl transition-all ring-1 ring-black/5"
@@ -5295,10 +5020,8 @@ ul li.selected { background-color: #e0e0ff; }
 <script setup>
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
 
-defineProps({
-  isOpen: { type: Boolean, required: true }
-})
-
+// kebab-case `is-open` in template maps to `isOpen` prop here
+defineProps({ isOpen: { type: Boolean, required: true } })
 defineEmits(['close'])
 </script>
 
@@ -7630,7 +7353,7 @@ export class IntegrationOrchestrator {
     this._worklist = null;
     this._editor = null;
 
-    // Instantiate shared GeocodeWithCacheController using the provided GeoRuntime
+    // Instantiate Shared GeocodeWithCacheController using the provided GeoRuntime
     // This assumes GeoRuntime.init() will be called before geocodeController.geocode() is needed.
     this._geocodeController = new GeocodeWithCacheController(this._geoRuntime);
   }
@@ -7671,7 +7394,7 @@ export class IntegrationOrchestrator {
       // Continue with null adapter
     }
 
-    // Instantiate CorrectionEditorController, passing the shared GeocodeWithCacheController
+    // Instantiate CorrectionEditorController, passing the Shared GeocodeWithCacheController
     const ctrl = new CorrectionEditorController(this.api, this._geocodeController);
 
     // Instantiate EditorFacade, passing the relevant components
@@ -12415,9 +12138,30 @@ const handleDelete = async (ruleId) => {
 ### PLIK: assets/main.css
 ================================================================================
 
-/* ARCHITECTURE: Base styles kept tiny and neutral. */
-:root { color-scheme: light; }
-body { background:#fff; color:#111; }
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens (safe to adjust) */
+:root {
+    --bg: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --primary: #1e4e8c;  /* deep blue */
+    --primary-600: #153e75;
+    --accent: #ffd400;   /* yellow */
+    --accent-600: #ffbf00;
+    --ring: rgba(30,78,140,.25);
+    --card: rgba(255,255,255,.72);
+    --border: rgba(2,6,23,.08);
+    --radius: 1.2rem;
+}
+
+/* Optional: lightweight helpers used by your components */
+.bg-brand { background-image: linear-gradient(135deg, var(--accent), var(--primary)); }
+.text-grad { background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; color: transparent; }
+
 
 ================================================================================
 ### PLIK: assets/theme.css
@@ -13557,38 +13301,26 @@ export class AddressSuggestionRanker {
 ### PLIK: services/Api.js
 ================================================================================
 
-/**
- * ARCHITECTURE: Axios singleton configured to cooperate with the Vite proxy in development.
- * Responsibilities:
- * - Use baseURL from env; when set to "/" (recommended for dev), requests are same-origin and get proxied.
- */
-import axios from "axios";
-
-function resolveBaseUrl() {
-  const w = typeof window !== "undefined" ? window : {};
-  const winBase = (w.__API_BASE_URL__ || "").trim();
-  const viteBase = (import.meta?.env?.VITE_API_BASE_URL || "").trim();
-  const base = (winBase || viteBase);
-  if (!base) return "/";          // default to same-origin → dev proxy handles cross-origin
-  if (base === "/") return "/";   // explicit proxy mode
-  return base.replace(/\/+$/, "");
-}
+// ============================================================================
+// Axios Client — same-origin, no /api prefix
+// ============================================================================
+import axios from 'axios';
 
 const api = axios.create({
-  baseURL: resolveBaseUrl(),
-  withCredentials: true,
-  headers: {
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-  },
+    baseURL: '/', // ← do NOT use '/api'
+    withCredentials: true,
+    headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    },
 });
 
 api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    err.message = err?.response?.data?.message || err.message || "Request failed";
-    return Promise.reject(err);
-  }
+    (res) => res,
+    (err) => {
+        err.message = err?.response?.data?.message || err.message || 'Request failed';
+        return Promise.reject(err);
+    }
 );
 
 export default api;
@@ -13599,7 +13331,7 @@ export default api;
 ================================================================================
 
 /**
- * ARCHITECTURE: ApiAuthBinder binds/unbinds the Authorization header on the shared ApiHttpClient singleton.
+ * ARCHITECTURE: ApiAuthBinder binds/unbinds the Authorization header on the Shared ApiHttpClient singleton.
  * Responsibilities:
  * - Apply "Authorization: <type> <token>" to axios defaults; remove it on logout.
  */
@@ -13706,37 +13438,27 @@ export class ApiErrorMapper {
 ### PLIK: services/AuthApi.js
 ================================================================================
 
-/**
- * ARCHITECTURE: AuthApi encapsulates authentication HTTP calls against the backend auth service.
- * It follows the manifesto by isolating transport details and returning deterministic Result objects.
- * Responsibilities:
- * - POST credentials to /auth/login and return a normalized session object on success.
- * - Keep transport client injectable for testing; default to the shared Axios instance.
- */
-import api from "@/services/Api.js";
-import { Result } from "@/domain/Result";
+// ============================================================================
+// AuthApi — thin wrapper around the shared axios client
+// Endpoints match backend exactly: /auth/login, /auth/refresh, /auth/logout
+// ============================================================================
+import api from '@/services/Api.js';
 
 export class AuthApi {
-  constructor(httpClient = api) {
-    this.http = httpClient;
+  async login(username, password) {
+    const { data } = await api.post('/auth/login', { username, password });
+    // Expect { accessToken, refreshToken, username, ... }
+    return { ok: true, value: data };
   }
 
-  async login(username, password) {
-    try {
-      const res = await this.http.post("/auth/login", { username, password });
-      const data = res?.data || {};
-      const session = {
-        accessToken: data.accessToken || null,
-        refreshToken: data.refreshToken || null,
-        tokenType: data.tokenType || "Bearer",
-        username: data.username || username || null,
-        roles: Array.isArray(data.roles) ? data.roles : [],
-      };
-      if (!session.accessToken) return Result.fail(new Error("AuthApi: accessToken missing in response."));
-      return Result.ok(session);
-    } catch (e) {
-      return Result.fail(e instanceof Error ? e : new Error("AuthApi: login failed"));
-    }
+  async refresh(refreshToken) {
+    const { data } = await api.post('/auth/refresh', { refreshToken });
+    return { ok: true, value: data };
+  }
+
+  async logout() {
+    await api.post('/auth/logout');
+    return { ok: true };
   }
 }
 
@@ -15629,34 +15351,25 @@ export class EditorRouteGuard {
 ### PLIK: router/index.js
 ================================================================================
 
-// FILE: src/router/index.js
 import { createRouter as createVueRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 
-// Core views
 import WorklistView from '@/views/WorklistView.vue';
 import CorrectionEditorView from '@/views/CorrectionEditorView.vue';
 import LoginView from '@/views/LoginView.vue';
-
-// New views
 import LogsView from '@/views/LogsView.vue';
 import ShowcasePro from '@/views/ShowcasePro.vue';
 
 export const createRouter = () => {
   const routes = [
-    { path: '/login', name: 'login', component: LoginView },
+    { path: '/login', name: 'login', component: LoginView, meta: { public: true, hideShell: true } }, // 👈
     { path: '/', redirect: '/worklist' },
 
     { path: '/worklist', name: 'worklist', component: WorklistView, meta: { requiresAuth: true } },
     { path: '/editor/:id', name: 'editor', component: CorrectionEditorView, meta: { requiresAuth: true } },
-
-    // Admin-only logs
     { path: '/logs', name: 'logs', component: LogsView, meta: { requiresAuth: true, requiresAdmin: true } },
-
-    // Yellow–Blue design showcase (optional)
     { path: '/pro', name: 'showcase-pro', component: ShowcasePro, meta: { requiresAuth: true } },
 
-    // 404
     { path: '/:pathMatch(.*)*', redirect: '/worklist' },
   ];
 
@@ -15668,21 +15381,14 @@ export const createRouter = () => {
 
   router.beforeEach((to, _from, next) => {
     const auth = useAuthStore();
-
-    // Public route
-    if (!to.meta.requiresAuth) return next();
-
-    // Need auth
-    if (!auth.isAuthenticated) {
+    if (to.meta.public) return next();
+    if (to.meta.requiresAuth && !auth.isAuthenticated) {
       auth.setRedirect?.(to.fullPath);
       return next({ name: 'login' });
     }
-
-    // Need admin
     if (to.meta.requiresAdmin && !auth.isAdmin) {
       return next({ name: 'worklist' });
     }
-
     return next();
   });
 
