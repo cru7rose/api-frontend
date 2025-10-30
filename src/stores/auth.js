@@ -1,102 +1,84 @@
-// ============================================================================
-// stores/auth.js — Canonical auth store
-// ============================================================================
-import { defineStore } from "pinia";
-import { ref, computed } from "vue";
-import { jwtDecode } from "jwt-decode";
-import apiClient from "@/services/Api.js";
-import { AuthApi } from "@/services/AuthApi.js";
+// Pinia auth store with checkAuth(), login(), logout()
+// Uses a single axios instance configured to cooperate with Nginx/Vite proxy.
 
-const AUTH_TOKEN_KEY = "auth_token";
-const REFRESH_TOKEN_KEY = "refresh_token";
-const USERNAME_KEY = "auth_username";
+import { defineStore } from 'pinia'
+import api from '@/services/api' // your axios singleton (baseURL="/", withCredentials=true)
 
-export const useAuthStore = defineStore("auth", () => {
-    const accessToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || null);
-    const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || null);
-    const username = ref(localStorage.getItem(USERNAME_KEY) || null);
-    const roles = ref([]);
-    const authError = ref(null);
-    const redirectPath = ref(null);
+export const useAuthStore = defineStore('auth', {
+    state: () => ({
+        user: null,          // { username, roles:[] }
+        token: null,         // optional if you use cookie session
+        redirectAfterLogin: null,
+        loading: false,
+        error: null,
+    }),
 
-    const isAuthenticated = computed(() => !!accessToken.value);
-    const isAdmin = computed(() => roles.value.includes("ADMIN"));
+    getters: {
+        isAuthenticated: (s) => !!s.user,
+        isAdmin: (s) => Array.isArray(s.user?.roles) && s.user.roles.includes('ADMIN'),
+        username: (s) => s.user?.username || null,
+    },
 
-    function decode(token) {
-        try { return jwtDecode(token); } catch { return null; }
-    }
+    actions: {
+        setRedirect(path) {
+            this.redirectAfterLogin = path || null
+        },
 
-    function applyAuthHeader(token) {
-        if (token) {
-            apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        } else {
-            delete apiClient.defaults.headers.common["Authorization"];
-        }
-    }
+        async checkAuth() {
+            // Hit a lightweight “me” endpoint if you have one; otherwise piggyback orders/me/etc.
+            // If you don’t have /auth/me, this will gracefully no-op and keep the app usable.
+            try {
+                this.loading = true
+                this.error = null
 
-    function setAuthData({ accessToken: at, refreshToken: rt, username: un }) {
-        accessToken.value = at || null;
-        refreshToken.value = rt || null;
-        username.value = un || null;
+                // Prefer: /auth/me
+                const res = await api.get('/auth/me').catch(() => null)
+                if (res?.status === 200 && res.data) {
+                    this.user = {
+                        username: res.data.username ?? res.data.name ?? 'user',
+                        roles: res.data.roles ?? [],
+                    }
+                    return true
+                }
 
-        localStorage.setItem(AUTH_TOKEN_KEY, at || "");
-        localStorage.setItem(REFRESH_TOKEN_KEY, rt || "");
-        localStorage.setItem(USERNAME_KEY, un || "");
-
-        const decoded = at ? decode(at) : null;
-        roles.value = decoded?.roles || [];
-
-        applyAuthHeader(at);
-        authError.value = null;
-    }
-
-    function clearAuth() {
-        accessToken.value = null;
-        refreshToken.value = null;
-        username.value = null;
-        roles.value = [];
-        localStorage.removeItem(AUTH_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-        localStorage.removeItem(USERNAME_KEY);
-        applyAuthHeader(null);
-        authError.value = null;
-    }
-
-    const api = new AuthApi();
-
-    async function login(user, pass) {
-        authError.value = null;
-        try {
-            const res = await api.login(user, pass);
-            if (res.ok) {
-                setAuthData(res.value);
-                return true;
+                // Fallback: consider not authenticated
+                this.user = null
+                return false
+            } finally {
+                this.loading = false
             }
-            authError.value = res.error?.message || "Login failed";
-            clearAuth();
-            return false;
-        } catch (e) {
-            authError.value = e?.message || "Login failed";
-            clearAuth();
-            return false;
-        }
-    }
+        },
 
-    async function logout() {
-        try { await api.logout(); } finally { clearAuth(); }
-    }
+        async login({ username, password }) {
+            try {
+                this.loading = true
+                this.error = null
 
-    function setRedirect(path) { redirectPath.value = path || null; }
+                // Your backend path is EXACTLY /auth/login
+                const res = await api.post('/auth/login', { username, password })
+                // If backend sets cookie, no token is needed; if it returns JWT, capture it:
+                if (res.data?.token) this.token = res.data.token
 
-    // Re-hydrate header on boot (if token cached)
-    if (accessToken.value) applyAuthHeader(accessToken.value);
+                // Optionally fetch profile
+                await this.checkAuth()
+                return { ok: true }
+            } catch (e) {
+                this.error = e.message || 'Login failed'
+                return { ok: false, error: this.error }
+            } finally {
+                this.loading = false
+            }
+        },
 
-    return {
-        // state
-        accessToken, refreshToken, username, roles, authError, redirectPath,
-        // getters
-        isAuthenticated, isAdmin,
-        // actions
-        login, logout, setRedirect,
-    };
-});
+        async logout() {
+            try {
+                await api.post('/auth/logout') // your backend path
+            } catch (_) {
+                // ignore
+            } finally {
+                this.user = null
+                this.token = null
+            }
+        },
+    },
+})

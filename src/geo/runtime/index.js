@@ -1,106 +1,52 @@
-// Bridge so the app can import "@/geo/runtime" and get a READY map adapter.
-// Reuses your existing adapters/GeoRuntime and guarantees adapter.create().
+// GeoRuntime: central place to configure Map, Geocode and Routing adapters
+// Contracts expected by the rest of your app:
+// - mapAdapter(): { create(containerEl): MapInstance, setView/fitBounds* delegated by MapController }
+// - geocodingAdapter(): { geocode(addressLike): Promise<{ latitude, longitude }|null> }
+// - routingAdapter(): { route(p1, p2): Promise<RouteGeoJSON|...> } (minimal surface; extend as needed)
 
-import { GeoRuntime } from '@/adapters/GeoRuntime';
-import * as L from 'leaflet';
+import { createLeafletAdapter } from '@/geo/adapters/leaflet'
+import { createNominatimAdapter } from '@/geo/adapters/nominatim'
+import { createOsrmAdapter } from '@/geo/adapters/osrm'
 
-function readEnv() {
-    const env = import.meta?.env ?? {};
-    return {
-        map: (env.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
-        geocode: (env.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
-        places: (env.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
-        nominatimEmail: env.VITE_NOMINATIM_EMAIL || 'admin@danxils.com',
-        nominatimUrl: (env.VITE_NOMINATIM_URL || '/nominatim').replace(/\/+$/, ''),
-        routingUrl: (env.VITE_ROUTING_PROVIDER_URL || '/osrm').replace(/\/+$/, ''),
-        tileUrl: env.VITE_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        maxZoom: Number(env.VITE_TILE_MAX_ZOOM || 19),
-        attribution: env.VITE_TILE_ATTR || '&copy; OpenStreetMap contributors',
-    };
-}
-
-// Build a Leaflet adapter object that MapController can consume.
-function buildLeafletAdapter(cfg) {
-    return {
-        /**
-         * Create and attach a Leaflet map to the given container element.
-         * Returns the Leaflet map instance.
-         */
-        create(container, options = {}) {
-            if (!container) throw new Error('Leaflet adapter: container is required');
-            const map = L.map(container, {
-                zoomControl: true,
-                ...options,
-            });
-
-            L.tileLayer(cfg.tileUrl, {
-                attribution: cfg.attribution,
-                maxZoom: cfg.maxZoom,
-            }).addTo(map);
-
-            // Provide small helpers some controllers like to call
-            map.__adapter = {
-                setCenter(lat, lon, zoom) {
-                    if (typeof zoom === 'number') map.setView([lat, lon], zoom);
-                    else map.setView([lat, lon]);
-                },
-                fitBounds(bounds) {
-                    // bounds: [[lat1, lon1], [lat2, lon2]]
-                    map.fitBounds(bounds);
-                },
-                addMarker(lat, lon, opts = {}) {
-                    return L.marker([lat, lon], opts).addTo(map);
-                },
-            };
-
-            return map;
-        },
-    };
-}
-
-async function ensureMapAdapter(runtime, cfg) {
-    const adapter = buildLeafletAdapter(cfg);
-
-    // If your GeoRuntime supports explicit setters, use them:
-    if (typeof runtime.initLeaflet === 'function') {
-        await runtime.initLeaflet(adapter);
-        return;
-    }
-    if (typeof runtime.setMapAdapter === 'function') {
-        runtime.setMapAdapter(adapter);
-        return;
-    }
-
-    // Otherwise guarantee a working getter.
-    runtime.mapAdapter = () => adapter;
+function readEnv(key, fallback = '') {
+    const v = (import.meta?.env?.[key] ?? '').toString().trim()
+    return v || fallback
 }
 
 export async function createGeoRuntime() {
-    const cfg = readEnv();
+    // Read frontend env (works the same in Docker build and Vite dev)
+    const geocodeProvider = readEnv('VITE_GEOCODE_PROVIDER', 'nominatim')
+    const nominatimUrl = readEnv('VITE_NOMINATIM_URL', '/nominatim')
+    const nominatimEmail = readEnv('VITE_NOMINATIM_EMAIL', 'admin@danxils.com')
+    const routingUrl = readEnv('VITE_ROUTING_PROVIDER_URL', '/osrm')
 
-    const runtime = new GeoRuntime({
-        map: cfg.map,
-        geocode: cfg.geocode,
-        places: cfg.places,
-        nominatimEmail: cfg.nominatimEmail,
-        nominatimUrl: cfg.nominatimUrl,
-        routingUrl: cfg.routingUrl,
-    });
+    // Initialize adapters
+    const map = createLeafletAdapter()
+    const geocode =
+        geocodeProvider === 'nominatim'
+            ? createNominatimAdapter({ baseUrl: nominatimUrl, email: nominatimEmail })
+            : null
+    const routing = createOsrmAdapter({ baseUrl: routingUrl })
 
-    // Ensure adapter exists and has create()
-    if (cfg.map === 'leaflet') {
-        await ensureMapAdapter(runtime, cfg);
+    const runtime = {
+        mapAdapter() {
+            if (!map?.create) throw new Error('GeoRuntime: Leaflet Map adapter not initialized.')
+            return map
+        },
+        geocodingAdapter() {
+            if (!geocode?.geocode) throw new Error('GeoRuntime: Nominatim Geocoding adapter not initialized.')
+            return geocode
+        },
+        routingAdapter() {
+            return routing // optional usage
+        },
+        // Optional: small logger
+        logSummary() {
+            // eslint-disable-next-line no-console
+            console.log('[GeoRuntime] Configured Providers - Map: leaflet, Geocode: %s, Places: none, Routing: OSRM', geocodeProvider)
+        },
     }
 
-    // Fill surfaces if your class doesn’t expose them
-    if (!runtime.geocode) {
-        runtime.geocode = { provider: cfg.geocode, baseUrl: cfg.nominatimUrl, email: cfg.nominatimEmail };
-    }
-    if (!runtime.routing) {
-        runtime.routing = { provider: 'osrm', baseUrl: cfg.routingUrl };
-    }
-
-    return runtime;
+    runtime.logSummary()
+    return runtime
 }
-
-export default createGeoRuntime;
