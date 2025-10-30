@@ -1,21 +1,24 @@
 import { createApp } from 'vue';
 import App from './App.vue';
-import router from './router';
+import { createRouter } from './router';
+import { createPinia } from 'pinia';
 import './assets/main.css';
 
-// whatever adapter you use:
-import { createGeoRuntime } from '@/geo/runtime'; // example factory
+// 👇 use the new bridge (reuses your adapters/GeoRuntime)
+import { createGeoRuntime } from '@/geo/runtime';
 
 const app = createApp(App);
-app.use(router);
+app.use(createPinia());
+app.use(createRouter());
 
-// Provide geoRuntime globally so all editors can inject it
-app.provide('geoRuntime', createGeoRuntime());
+// Provide geoRuntime once for the whole app
+const geoRuntime = createGeoRuntime();
+// If your GeoRuntime requires async init (e.g., Google), you can await it before mount:
+// await geoRuntime.init(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
-// Optional: provide a notifier
-app.provide('showNotification', (msg, type) => {
-    // wire to your notification store/toast
-    console.log(`[${type}] ${msg}`);
-});
+app.provide('geoRuntime', geoRuntime);
+
+// Optional: notification hook used in editor
+app.provide('showNotification', (msg, type = 'info') => console.log(`[${type}] ${msg}`));
 
 app.mount('#app');
