@@ -29,9 +29,12 @@ import '@/assets/theme.css';
 
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
-        // *** FIX: Use the proxy path, not the direct IP from the adapter's default ***
+
+        // Use the proxy path, not a direct IP
         nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim',
-        // *** FIX: Use OSRM proxy path '/osrm' by default ***
+
+        // *** THIS IS THE FIX FOR "Routing: None" ***
+        // It tells GeoRuntime to use the '/osrm' proxy path
         routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey = config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
