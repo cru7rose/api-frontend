@@ -1,18 +1,21 @@
 import { createApp } from 'vue';
-import { createPinia } from 'pinia';
 import App from './App.vue';
-import { createRouter } from '@/router';
+import router from './router';
+import './assets/main.css';
 
-// ✅ Load Tailwind layers + theme tokens
-import '@/assets/main.css';
+// whatever adapter you use:
+import { createGeoRuntime } from '@/geo/runtime'; // example factory
 
 const app = createApp(App);
-const pinia = createPinia();
-app.use(pinia);
-
-const router = createRouter();
 app.use(router);
 
-router.isReady().then(() => {
-    app.mount('#app');
+// Provide geoRuntime globally so all editors can inject it
+app.provide('geoRuntime', createGeoRuntime());
+
+// Optional: provide a notifier
+app.provide('showNotification', (msg, type) => {
+    // wire to your notification store/toast
+    console.log(`[${type}] ${msg}`);
 });
+
+app.mount('#app');

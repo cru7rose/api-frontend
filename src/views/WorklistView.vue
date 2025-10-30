@@ -1,13 +1,13 @@
 <script setup>
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useWorklistStore } from '@/stores/WorklistStore.js';
-import api from '@/services/Api.js'; // same axios singleton we added
+import api from '@/services/Api.js';
 
 const router = useRouter();
-const store = useWorklistStore?.() ?? {};
+const store = typeof useWorklistStore === 'function' ? useWorklistStore() : null;
 
-// ---- local reactive state ----
+/* Filters */
 const filters = ref({
   customerId: '',
   status: 'PENDING_VERIFICATION',
@@ -16,32 +16,32 @@ const filters = ref({
   sort: 'ingestedAt,desc',
 });
 
-const loading    = ref(false);
-const rows       = ref([]);
-const page       = ref(0);
-const totalPages = ref(1);
+/* Local state (rename to avoid collisions) */
+const isLoading      = ref(false);
+const rows           = ref([]);
+const pageNo         = ref(0);
+const totalPagesNo   = ref(1);
 
-// ---- normalize store shape (adapter) ----
-function hasFn(obj, name) { return obj && typeof obj[name] === 'function'; }
+/* Helpers */
+const hasFn = (obj, name) => obj && typeof obj[name] === 'function';
 
-async function callStoreFetch(params) {
-  // Try common method names in order
+async function callStore(params) {
+  if (!store) return null;
   if (hasFn(store, 'fetch'))       return await store.fetch(params);
   if (hasFn(store, 'getWorklist')) return await store.getWorklist(params);
   if (hasFn(store, 'load'))        return await store.load(params);
   if (hasFn(store, 'list'))        return await store.list(params);
   if (hasFn(store, 'query'))       return await store.query(params);
-  return null; // signal fallback
+  return null;
 }
 
-function syncFromStore() {
-  // Best-effort copy if the store exposes state
-  rows.value       = (store.items ?? store.rows ?? store.data ?? []);
-  page.value       = Number(store.page ?? store.currentPage ?? 0) || 0;
-  totalPages.value = Number(store.totalPages ?? store.pages ?? 1) || 1;
+function mirrorStore() {
+  if (!store) return;
+  rows.value         = store.items ?? store.rows ?? store.data ?? [];
+  pageNo.value       = Number(store.page ?? store.currentPage ?? 0) || 0;
+  totalPagesNo.value = Number(store.totalPages ?? store.pages ?? 1) || 1;
 }
 
-// ---- fallback direct API (keeps /api prefix; nginx will forward to api.danxils.com/api) ----
 async function fetchDirect(params) {
   const { customerId, status, page, size, sort } = params;
   const { data } = await api.get('/api/orders', {
@@ -51,16 +51,19 @@ async function fetchDirect(params) {
       page, size, sort,
     },
   });
-  // Expecting Spring-style page response; adapt defensively
-  const content    = data?.content ?? data?.items ?? data ?? [];
-  rows.value       = Array.isArray(content) ? content : [];
-  page.value       = Number(data?.page ?? data?.number ?? 0) || 0;
-  totalPages.value = Number(data?.totalPages ?? 1) || 1;
+
+  const content = Array.isArray(data?.content) ? data.content
+      : Array.isArray(data?.items)   ? data.items
+          : Array.isArray(data)          ? data
+              : [];
+
+  rows.value         = content;
+  pageNo.value       = Number(data?.page ?? data?.number ?? 0) || 0;
+  totalPagesNo.value = Number(data?.totalPages ?? 1) || 1;
 }
 
-// ---- public actions ----
 async function reload() {
-  loading.value = true;
+  isLoading.value = true;
   try {
     const params = {
       customerId: filters.value.customerId || undefined,
@@ -70,19 +73,13 @@ async function reload() {
       sort: filters.value.sort,
     };
 
-    const usedStore = await callStoreFetch(params);
-    if (usedStore !== null) {
-      // store handled it — mirror its state if possible
-      syncFromStore();
-    } else {
-      // no store method — fetch directly
-      await fetchDirect(params);
-    }
+    const usedStore = await callStore(params);
+    if (usedStore !== null) mirrorStore();
+    else await fetchDirect(params);
   } catch (e) {
     console.error('Worklist load failed:', e);
-    // keep old rows and show a gentle toast if you have one
   } finally {
-    loading.value = false;
+    isLoading.value = false;
   }
 }
 
@@ -170,27 +167,39 @@ onMounted(reload);
             <button class="btn-blue" @click="openEditor(r.id)">Open</button>
           </td>
         </tr>
-        <tr v-if="!loading && rows.length === 0">
+
+        <tr v-if="!isLoading && rows.length === 0">
           <td colspan="8" class="py-12 text-center text-slate-400">No results.</td>
         </tr>
         </tbody>
       </table>
     </div>
 
+    <!-- Pagination -->
     <div class="mt-4 flex items-center justify-between text-sm text-slate-600">
-      <div>Page {{ page + 1 }} / {{ totalPages }}</div>
+      <div>Page {{ pageNo + 1 }} / {{ totalPagesNo }}</div>
       <div class="flex gap-2">
-        <button class="btn-ghost" :disabled="page <= 0" @click="filters.page = page - 1; reload()">Prev</button>
-        <button class="btn-ghost" :disabled="page >= totalPages - 1" @click="filters.page = page + 1; reload()">Next</button>
+        <button
+            class="btn-ghost"
+            :disabled="pageNo <= 0"
+            @click="filters.page = pageNo - 1; reload()"
+        >
+          Prev
+        </button>
+        <button
+            class="btn-ghost"
+            :disabled="pageNo >= totalPagesNo - 1"
+            @click="filters.page = pageNo + 1; reload()"
+        >
+          Next
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.input {
-  @apply h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30;
-}
+.input { @apply h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30; }
 .btn-primary { @apply inline-flex items-center h-9 rounded-lg px-3 text-sm font-medium text-slate-900 bg-yellow-300 hover:bg-yellow-400 transition; }
 .btn-ghost   { @apply inline-flex items-center h-9 rounded-lg px-3 text-sm text-slate-700 hover:bg-slate-100; }
 .btn-blue    { @apply inline-flex items-center h-8 rounded-md px-3 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700; }
