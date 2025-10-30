@@ -47,7 +47,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 
 const addresses = ref([]);
 const isLoading = ref(false);

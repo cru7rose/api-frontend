@@ -6,7 +6,7 @@
  * - Since the backend uses Kafka, this involves initiating requests and polling for completion status.
  * - Cache the result to avoid redundant network calls during the session.
  */
-import apiClient from "@/services/api";
+import apiClient from "@/services/Api.js";
 import { TesOperationPoller } from "@/services/TesOperationPoller";
 
 export class ProviderGuard {

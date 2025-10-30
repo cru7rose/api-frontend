@@ -46,7 +46,7 @@
 
 <script setup>
 import { ref, reactive } from 'vue';
-import api from '@/services/api'; // Import naszego klienta API
+import api from '@/services/Api.js'; // Import naszego klienta API
 
 // Props, np. ID zlecenia
 const props = defineProps({

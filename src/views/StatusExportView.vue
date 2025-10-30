@@ -55,7 +55,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import apiClient from '@/services/api'; // Upewnij się, że ścieżka jest poprawna
+import apiClient from '@/services/Api.js'; // Upewnij się, że ścieżka jest poprawna
 
 // === STAN KOMPONENTU ===
 const files = ref([]);

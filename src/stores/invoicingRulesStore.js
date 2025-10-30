@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import apiClient from '@/services/api.js'; // Using your existing API client [cite: 26, 30]
+import apiClient from '@/services/Api.js'; // Using your existing API client [cite: 26, 30]
 
 export const useInvoicingRulesStore = defineStore('invoicingRules', {
   state: () => ({

@@ -33,6 +33,6 @@ export class BulkEditController {
 
   async _post(path, plan) {
     const url = `/api/address-exceptions${path}`;
-    return await (await import("@/services/api")).default.post(url, plan.toJSON ? plan.toJSON() : plan);
+    return await (await import("@/services/Api.js")).default.post(url, plan.toJSON ? plan.toJSON() : plan);
   }
 }

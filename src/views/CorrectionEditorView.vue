@@ -95,6 +95,7 @@
 </template>
 
 <script setup>
+// *** Import 'watch' ***
 import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
@@ -178,6 +179,11 @@ onUnmounted(() => {
 });
 
 // *** FIX: This is the correct way to watch the ref ***
+// This watch fires when the 'mapContainer' ref changes.
+// 1. On load, it's null.
+// 2. After loadOrderData() sets state.detail, Vue renders the <div>.
+// 3. Vue attaches the <div> to the ref, so mapContainer.value becomes non-null.
+// 4. This 'watch' block fires, and we can safely initialize the map.
 watch(mapContainer, async (newMapEl) => {
   // 1. If the element (newMapEl) exists and the controller (mapController) doesn't...
   if (newMapEl && !mapController) {

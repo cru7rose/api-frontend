@@ -5,7 +5,7 @@
 //         Update _getStoredAddressLabel to show raw reason codes.
 // ============================================================================
 // FILE: src/services/AddressExceptionApi.js (Supersedes previous version)
-import api from "@/services/api";
+import api from "@/services/Api.js";
 import { Result } from "@/domain/Result";
 import { Address } from "@/domain/WorkbenchModels";
 

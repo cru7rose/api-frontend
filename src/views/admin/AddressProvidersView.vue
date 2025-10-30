@@ -121,7 +121,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 import { useAuthStore } from '@/stores/authStore';
 
 const authStore = useAuthStore();

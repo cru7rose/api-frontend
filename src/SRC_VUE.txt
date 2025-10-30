@@ -125,7 +125,7 @@ export default router;
 ### PLIK: services\addressSuggestionService.js
 ================================================================================
 
-import apiClient from '@/services/api.js';
+import apiClient from '@/services/Api.js';
 
 const pollForResults = async (correlationId) => {
   const maxRetries = 10;
@@ -186,7 +186,7 @@ export const fetchByNameSearch = async (searchQuery) => {
 };
 
 ================================================================================
-### PLIK: services\api.js
+### PLIK: services\Api.js
 ================================================================================
 
 import axios from 'axios';
@@ -489,7 +489,7 @@ export default apiService;
 ================================================================================
 
 import { defineStore } from 'pinia';
-import apiClient from '@/services/api.js'; // Using your existing API client [cite: 26, 30]
+import apiClient from '@/services/Api.js'; // Using your existing API client [cite: 26, 30]
 
 export const useInvoicingRulesStore = defineStore('invoicingRules', {
   state: () => ({

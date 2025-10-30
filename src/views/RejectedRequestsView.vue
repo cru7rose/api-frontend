@@ -137,7 +137,7 @@
 import { ref, onMounted } from 'vue';
 import { useErrorStore } from '@/stores/errorStore';
 import ErrorDetailsModal from '@/components/modals/ErrorDetailsModal.vue';
-import apiClient from '@/services/api.js';
+import apiClient from '@/services/Api.js';
 
 const errorStore = useErrorStore();
 

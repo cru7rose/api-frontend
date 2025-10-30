@@ -1,7 +1,7 @@
 // FILE: src/stores/useLogStore.js
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import apiClient from '@/services/api.js';
+import apiClient from '@/services/Api.js';
 import { useAuthStore } from '@/stores/authStore.js';
 
 export const useLogStore = defineStore('logStore', () => {

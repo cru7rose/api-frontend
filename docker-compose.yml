@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   apidanxils-frontend:
     # Buduj obraz na podstawie pliku Dockerfile w bieżącym folderze

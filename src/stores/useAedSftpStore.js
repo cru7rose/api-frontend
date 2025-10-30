@@ -3,7 +3,7 @@
 // ARCHITECTURE: Pinia store for the new AED SFTP Admin view.
 // ============================================================================
 import { defineStore } from 'pinia';
-import apiClient from '@/services/api'; // Use the shared API client
+import apiClient from '@/services/Api.js'; // Use the shared API client
 import { ref } from 'vue';
 
 export const useAedSftpStore = defineStore('aedSftpAdmin', () => {

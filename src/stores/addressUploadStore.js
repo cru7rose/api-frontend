@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 
 export const useAddressUploadStore = defineStore('addressUpload', {
   state: () => ({

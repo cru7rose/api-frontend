@@ -3,7 +3,7 @@
  * Responsibilities:
  * - Apply "Authorization: <type> <token>" to axios defaults; remove it on logout.
  */
-import apiClient from "@/services/api";
+import apiClient from "@/services/Api.js";
 
 export class ApiAuthBinder {
   constructor() {

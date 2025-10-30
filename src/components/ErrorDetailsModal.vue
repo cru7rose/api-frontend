@@ -49,7 +49,7 @@
 
 <script setup>
 import { ref, reactive, onUnmounted, watch } from 'vue';
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 import BaseModal from '@/components/Shared/BaseModal.vue'; // Przykładowy komponent modala
 
 const props = defineProps({

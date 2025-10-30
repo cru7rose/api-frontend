@@ -1,7 +1,7 @@
 // PLIK: src/stores/processingErrorsStore.js (NOWY PLIK)
 
 import { defineStore } from 'pinia';
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 
 /**
  * ARCHITEKTURA: Dedykowany magazyn stanu (Pinia Store) dla zarządzania błędami przetwarzania.

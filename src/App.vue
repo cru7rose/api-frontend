@@ -1,179 +1,64 @@
-<script setup>
-import { computed, ref, watch, provide, readonly } from "vue";
-import { useRouter } from "vue-router";
-import { useAuthStore } from "@/stores/authStore";
-import { storeToRefs } from "pinia";
-import SidebarNav from '@/components/layout/SidebarNav.vue'; // *** IMPORT SIDEBAR ***
-
-// Basic global notification state (can be expanded)
-const notification = ref({ show: false, message: '', type: 'info' }); // type: info, success, warning, error
-const showNotification = (message, type = 'info', duration = 3000) => {
-  notification.value = { show: true, message, type };
-  setTimeout(() => {
-    notification.value.show = false;
-  }, duration);
-};
-provide('showNotification', showNotification); // Make available globally
-
-const authStore = useAuthStore();
-const { isAuthenticated, user } = storeToRefs(authStore);
-const router = useRouter();
-
-const handleLogout = () => {
-  authStore.logout();
-  router.push("/login");
-  showNotification('Logged out successfully.', 'success');
-};
-
-const userInitial = computed(() => user.value?.username?.charAt(0)?.toUpperCase() || '?');
-
-// Watch for authentication changes to potentially redirect
-watch(isAuthenticated, (isAuth, oldAuth) => {
-  // Only redirect if state changes from authenticated to not authenticated
-  // and we are not already on the login page
-  if (oldAuth === true && isAuth === false && router.currentRoute.value.path !== '/login') {
-    router.push('/login');
-  }
-}, { immediate: false }); // Don't run immediately on load
-
-// Provide readonly auth state for components that just need to read it
-provide('isAuthenticated', readonly(isAuthenticated));
-provide('currentUser', readonly(user));
-
-</script>
-
 <template>
-  <div class="app-layout">
-    <header class="app-header" v-if="isAuthenticated">
-      <div class="header-content">
-        <div class="logo">DANXILS Triage</div>
-        <div class="user-info">
-          <span class="user-initial">{{ userInitial }}</span>
-          <span class="username">{{ user?.username }}</span>
-          <button @click="handleLogout" class="logout-button">Logout</button>
-        </div>
-      </div>
-    </header>
+  <div class_name="flex h-screen bg-gray-100 dark:bg-gray-900">
+    <Sidebar :is-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-    <div class="app-body">
-      <SidebarNav v-if="isAuthenticated" />
+    <div class_name="flex-1 flex flex-col overflow-hidden">
+      <AppHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-      <main class="app-content">
-        <RouterView />
+      <main class_name="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900">
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </main>
     </div>
 
-
-    <div v-if="notification.show" :class="['notification-banner', `notification-${notification.type}`]">
-      {{ notification.message }}
-    </div>
-
+    <Notification />
   </div>
 </template>
 
+<script setup>
+import { ref, onMounted, provide } from 'vue';
+import { useAuthStore } from '@/stores/auth.js';
+import Sidebar from '@/components/Sidebar.vue';
+import AppHeader from '@/components/AppHeader.vue';
+import Notification from '@/components/Notification.vue';
+import { useNotificationStore } from '@/stores/notification.js';
+
+const authStore = useAuthStore();
+const notificationStore = useNotificationStore();
+
+// --- Sidebar State ---
+// Start open on desktop, closed on mobile
+const sidebarOpen = ref(window.innerWidth >= 1024);
+
+// --- Provide global utilities ---
+// This replaces the old 'showNotification' from main.js
+provide('showNotification', (message, type = 'info', duration = 5000) => {
+  notificationStore.show(message, type, duration);
+});
+
+onMounted(() => {
+  authStore.checkAuth();
+
+  // Handle dark mode from user's OS preference
+  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+});
+</script>
+
 <style scoped>
-.app-layout {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+/* Simple fade transition for router-view */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
 }
-
-.app-header {
-  background-color: var(--color-primary);
-  color: white;
-  padding: 0 calc(var(--spacing-unit) * 2);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  position: sticky; /* Keep header visible */
-  top: 0;
-  z-index: 1000;
-  height: 60px; /* Fixed header height */
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
-
-.header-content {
-  max-width: 100%; /* Allow header content to span full width */
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  height: 100%;
-  justify-content: space-between; /* Push logo left, user info right */
-}
-
-.logo {
-  font-weight: bold;
-  font-size: 1.2rem;
-}
-
-/* Main nav removed */
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-unit);
-}
-
-.user-initial {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background-color: var(--color-secondary);
-  color: var(--color-primary);
-  font-weight: bold;
-  margin-right: calc(var(--spacing-unit));
-}
-
-.username {
-  font-weight: 500;
-}
-
-.logout-button {
-  background: none;
-  border: 1px solid white;
-  color: white;
-  padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
-  border-radius: 4px;
-  cursor: pointer;
-  margin-left: calc(var(--spacing-unit) * 2);
-}
-.logout-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* *** NEW: Body Layout with Sidebar *** */
-.app-body {
-  display: flex;
-  flex-grow: 1; /* Take remaining height */
-  overflow: hidden; /* Prevent body scroll */
-}
-
-.app-content {
-  flex-grow: 1;
-  padding: calc(var(--spacing-unit) * 3); /* Add padding around main content */
-  overflow-y: auto; /* Allow content area to scroll */
-  height: calc(100vh - 60px); /* Full height minus header */
-}
-/* *** END NEW *** */
-
-/* Notification Banner Styles */
-.notification-banner {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 15px 25px;
-  border-radius: 4px;
-  color: white;
-  font-weight: 500;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  z-index: 1001;
-  min-width: 250px;
-  text-align: center;
-}
-.notification-info { background-color: var(--color-info); }
-.notification-success { background-color: var(--color-success); }
-.notification-warning { background-color: var(--color-warning); color: var(--color-text); } /* Yellow needs dark text */
-.notification-error { background-color: var(--color-danger); }
-
 </style>

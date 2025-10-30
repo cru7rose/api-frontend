@@ -6,7 +6,7 @@
  * - Implement configurable retry limits and polling intervals.
  * - Return the final operation status and result/error.
  */
-import apiClient from '@/services/api';
+import apiClient from '@/services/Api.js';
 
 export class TesOperationPoller {
     constructor(defaultIntervalMs = 2000, defaultMaxRetries = 15) {

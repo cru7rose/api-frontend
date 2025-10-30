@@ -5,7 +5,7 @@
  * - Fetch flags from backend once; expose booleans for critical flows (requireGeocode, bulkEdit).
  * - Allow local overrides for testing without changing backend state.
  */
-import apiClient from "@/services/api";
+import apiClient from "@/services/Api.js";
 
 export class FeatureFlagService {
   constructor(endpoint = "/status/feature-flags") {

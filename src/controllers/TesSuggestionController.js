@@ -5,7 +5,7 @@
  * - Trigger suggest-on-demand or search-by-name; poll until done; return normalized suggestions.
  * - Delegate normalization/merging to provided collaborators without leaking TES DTOs to callers.
  */
-import apiClient from "@/services/api";
+import apiClient from "@/services/Api.js";
 import { TesOperationPoller } from "@/services/TesOperationPoller";
 import { SuggestionNormalizer } from "@/services/SuggestionNormalizer";
 import { AddressSuggestionMerger } from "@/services/AddressSuggestionMerger";

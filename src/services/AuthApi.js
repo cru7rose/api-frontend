@@ -5,7 +5,7 @@
  * - POST credentials to /auth/login and return a normalized session object on success.
  * - Keep transport client injectable for testing; default to the shared Axios instance.
  */
-import api from "@/services/api";
+import api from "@/services/Api.js";
 import { Result } from "@/domain/Result";
 
 export class AuthApi {

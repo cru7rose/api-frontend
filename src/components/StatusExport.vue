@@ -22,7 +22,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import apiClient from '@/services/api.js';
+import apiClient from '@/services/Api.js';
 
 const isLoading = ref(false);
 const errorMessage = ref('');
