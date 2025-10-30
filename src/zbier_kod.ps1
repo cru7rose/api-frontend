@@ -15,7 +15,9 @@ $uwzglednianeRozszerzenia = @(
     '.sql',       # Skrypty SQL
     '.html',      # Pliki HTML (np. Thymeleaf)
     '.css',       # Arkusze stylów
-    '.js'         # Skrypty JavaScript
+    '.js',        # Skrypty JavaScript
+    '.vue',
+    '.ts'
 )
 
 # Nazwy katalogów, które mają zostać POMINIĘTE podczas skanowania.
