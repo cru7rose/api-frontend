@@ -4,13 +4,13 @@
 ================================================================================
 
 <template>
-  <div class_name="flex h-screen bg-gray-100 dark:bg-gray-900">
+  <div class="flex h-screen bg-gray-100 dark:bg-gray-900">
     <Sidebar :is-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-    <div class_name="flex-1 flex flex-col overflow-hidden">
+    <div class="flex-1 flex flex-col overflow-hidden">
       <AppHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-      <main class_name="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900">
+      <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
             <component :is="Component" />
@@ -24,100 +24,73 @@
 </template>
 
 <script setup>
-import { ref, onMounted, provide } from 'vue';
-import { useAuthStore } from '@/stores/auth.js';
-import Sidebar from '@/components/Sidebar.vue';
-import AppHeader from '@/components/AppHeader.vue';
-import Notification from '@/components/Notification.vue';
-import { useNotificationStore } from '@/stores/notification.js';
+import { ref, onMounted, provide } from 'vue'
+import { useAuthStore } from '@/stores/auth.js'
 
-const authStore = useAuthStore();
-const notificationStore = useNotificationStore();
+// Keep your existing Sidebar/Notification locations if they exist there
+import Sidebar from '@/components/Sidebar.vue'
+import AppHeader from '@/components/layout/AppHeader.vue'  // ✅ fixed path
+import Notification from '@/components/Notification.vue'
 
-// --- Sidebar State ---
-// Start open on desktop, closed on mobile
-const sidebarOpen = ref(window.innerWidth >= 1024);
+import { useNotificationStore } from '@/stores/notification.js'
 
-// --- Provide global utilities ---
-// This replaces the old 'showNotification' from main.js
+const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
+
+// Provide Pinia auth for any legacy inject('auth') usages
+provide('auth', authStore)
+
+const sidebarOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
+
+// Provide a simple notification helper
 provide('showNotification', (message, type = 'info', duration = 5000) => {
-  notificationStore.show(message, type, duration);
-});
+  notificationStore.show(message, type, duration)
+})
 
 onMounted(() => {
-  authStore.checkAuth();
+  authStore.checkAuth?.()
 
-  // Handle dark mode from user's OS preference
-  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
+  // Respect OS dark mode unless user overrides
+  if (
+      localStorage.theme === 'dark' ||
+      (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  ) {
+    document.documentElement.classList.add('dark')
   } else {
-    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.remove('dark')
   }
-});
+})
 </script>
 
 <style scoped>
-/* Simple fade transition for router-view */
 .fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
+.fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+.fade-leave-to { opacity: 0; }
 </style>
+
 
 ================================================================================
 ### PLIK: main.js
 ================================================================================
 
-import { createApp } from "vue";
-import { createPinia } from "pinia";
-import App from "@/App.vue";
-import { createRouter } from "@/router/index";
-import { AppBootstrapController } from "@/controllers/AppBootstrapController";
-import { AuthController } from "@/controllers/AuthController";
-import { GeoRuntime } from "@/adapters/GeoRuntime";
-import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
-
-// *** DODAJ TEN IMPORT STYLÓW ***
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import App from './App.vue';
+import { createRouter } from '@/router';
 import '@/assets/theme.css';
-// *** KONIEC IMPORTU ***
 
-(async () => {
-    const pinia = createPinia();
-    // ... (reszta kodu bez zmian) ...
+const app = createApp(App);
+const pinia = createPinia();
+app.use(pinia);
 
-    const geoRuntime = new GeoRuntime(geoProviderConfig);
+const router = createRouter(); // pass geoRuntime if needed later
+app.use(router);
 
-    // 4. Initialize GeoRuntime
-    try {
-        await geoRuntime.init(googleKey);
-        console.log("[main.js] Geo Runtime initialization attempted.");
-    } catch(err) {
-        console.error("[main.js] Global Geo Runtime initialization failed:", err?.message || err);
-    }
+router.isReady().then(() => {
+    app.mount('#app');
+});
 
-    const router = createRouter(geoRuntime);
-    const app = createApp(App);
-
-    app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
-    window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
-    window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));
-
-    app.use(pinia);
-    app.use(router);
-
-    const orchestrator = new IntegrationOrchestrator(geoRuntime, null);
-    app.provide("orchestrator", orchestrator);
-    app.provide("auth", auth);
-    app.provide("config", config);
-    app.provide("health", health);
-    app.provide("geoRuntime", geoRuntime);
-
-    app.mount("#app");
-})();
 
 ================================================================================
 ### PLIK: viewmodels/DiffPresenter.js
@@ -547,17 +520,18 @@ export const useAddressUploadStore = defineStore('addressUpload', {
 ================================================================================
 
 // ============================================================================
-// Frontend: Add auth.js store
-// FILE: src/stores/auth.js (NEW FILE)
-// REASON: This file was missing, causing the build to fail.
-//         It manages user authentication state (token, username, roles).
+// Frontend: Fix auth.js store (Supersedes previous version)
+// FILE: src/stores/auth.js
+// REASON: Corrects the import for the API client (default export)
+//         and uses the correct method for setting the auth header
+//         on the axios instance.
 // ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { AuthApi } from '@/services/AuthApi';
 // *** THIS IS THE FIX ***
-import { Api } from '@/services/Api.js'; // <-- Add the .js extension
+import apiClient from '@/services/Api.js'; // <-- Import the default export
 // *** END FIX ***
 
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -602,8 +576,13 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
         localStorage.setItem(USERNAME_KEY, user);
 
-        // Set the auth header on the global API instance
-        Api.setAuthHeader(token);
+        // --- FIX: Set header on the imported axios instance ---
+        if (token) {
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        } else {
+            delete apiClient.defaults.headers.common['Authorization'];
+        }
+        // --- END FIX ---
 
         authError.value = null;
     }
@@ -618,8 +597,9 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
 
-        // Clear the auth header
-        Api.setAuthHeader(null);
+        // --- FIX: Clear the auth header ---
+        delete apiClient.defaults.headers.common['Authorization'];
+        // --- END FIX ---
 
         authError.value = null;
     }
@@ -660,7 +640,9 @@ export const useAuthStore = defineStore('auth', () => {
             if (decoded && decoded.exp * 1000 > Date.now()) {
                 // Token is valid and not expired
                 roles.value = decoded.roles || [];
-                Api.setAuthHeader(token);
+                // --- FIX: Set header on the imported axios instance ---
+                apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                // --- END FIX ---
                 authError.value = null;
             } else {
                 // Token is expired or invalid
@@ -704,16 +686,19 @@ export const useAuthStore = defineStore('auth', () => {
 ================================================================================
 
 // ============================================================================
-// Frontend: Add auth.js store
-// FILE: src/stores/auth.js (NEW FILE)
-// REASON: This file was missing, causing the build to fail.
-//         It manages user authentication state (token, username, roles).
+// Frontend: Fix authStore.js store (Supersedes previous version)
+// FILE: src/stores/authStore.js
+// REASON: Corrects the import for the API client (default export)
+//         and uses the correct method for setting the auth header.
+//         (This file is a duplicate of auth.js but required by other imports)
 // ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { AuthApi } from '@/services/AuthApi';
-import { Api } from '@/services/Api.js'; // Import the base Api class
+// *** THIS IS THE FIX ***
+import apiClient from '@/services/Api.js'; // <-- Import the default export
+// *** END FIX ***
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
@@ -757,8 +742,13 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
     localStorage.setItem(USERNAME_KEY, user);
 
-    // Set the auth header on the global API instance
-    Api.setAuthHeader(token);
+    // --- FIX: Set header on the imported axios instance ---
+    if (token) {
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete apiClient.defaults.headers.common['Authorization'];
+    }
+    // --- END FIX ---
 
     authError.value = null;
   }
@@ -773,8 +763,9 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USERNAME_KEY);
 
-    // Clear the auth header
-    Api.setAuthHeader(null);
+    // --- FIX: Clear the auth header ---
+    delete apiClient.defaults.headers.common['Authorization'];
+    // --- END FIX ---
 
     authError.value = null;
   }
@@ -815,7 +806,9 @@ export const useAuthStore = defineStore('auth', () => {
       if (decoded && decoded.exp * 1000 > Date.now()) {
         // Token is valid and not expired
         roles.value = decoded.roles || [];
-        Api.setAuthHeader(token);
+        // --- FIX: Set header on the imported axios instance ---
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        // --- END FIX ---
         authError.value = null;
       } else {
         // Token is expired or invalid
@@ -1282,31 +1275,44 @@ export const useLogStore = defineStore('logStore', () => {
 ### PLIK: stores/WorklistStore.js
 ================================================================================
 
+// ============================================================================
+// Frontend: Update WorklistStore.js (Supersedes previous version)
+// FILE: src/stores/WorklistStore.js
+// REASON: Fix build error by importing new WorklistApi.
+//         Implement WorklistFilter domain object correctly.
+//         Add missing selection and pagination logic.
+// ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { Result } from '@/domain/Result';
-import { WorklistApi } from '@/services/WorklistApi.js'
+import { WorklistApi } from '@/services/WorklistApi.js'; // <-- FIX: Import new API
+import { WorklistFilter } from '@/domain/WorklistFilter.js'; // <-- FIX: Import domain object
 
 export const useWorklistStore = defineStore('worklist', () => {
     // --- State ---
-    const items = ref([]); // Holds the current page of items
+    const items = ref([]);
     const loading = ref(false);
     const error = ref(null);
     const pagination = ref({
-        page: 1,
+        page: 1, // UI is 1-indexed
         size: 25,
         totalElements: 0,
         totalPages: 1,
     });
-    const filters = ref({
-        barcode: '',
+    // --- FIX: Use the WorklistFilter domain object ---
+    const filters = ref(new WorklistFilter({
         status: 'PENDING_VERIFICATION', // Default to pending
-    });
+    }));
+    // --- FIX: Add selection state ---
+    const selection = ref([]);
 
     const api = new WorklistApi();
 
     // --- Getters ---
     const worklist = computed(() => items.value);
+    // --- FIX: Add selection getters ---
+    const selectedCount = computed(() => selection.value.length);
+    const isSelected = computed(() => (orderId) => selection.value.includes(orderId));
 
     // --- Actions ---
 
@@ -1320,10 +1326,8 @@ export const useWorklistStore = defineStore('worklist', () => {
             sort: 'ingestedAt,desc', // Default sort
         };
 
-        const filterValues = {
-            barcode: filters.value.barcode || null,
-            status: filters.value.status || null,
-        };
+        // --- FIX: Use the filter domain object ---
+        const filterValues = filters.value.toQueryRecord();
 
         const result = await api.getWorklist(filterValues, pageRequest);
 
@@ -1336,6 +1340,8 @@ export const useWorklistStore = defineStore('worklist', () => {
                 totalElements: data.totalElements,
                 totalPages: data.totalPages,
             };
+            // Clear selection on page load
+            clearSelection();
         } else {
             error.value = result.error.message;
             items.value = [];
@@ -1343,17 +1349,49 @@ export const useWorklistStore = defineStore('worklist', () => {
         loading.value = false;
     }
 
+    // --- FIX: Updated filter/page actions ---
     function setFilters(newFilters) {
-        filters.value = { ...filters.value, ...newFilters };
+        filters.value = filters.value.withPatch(newFilters);
         pagination.value.page = 1; // Reset to first page on filter change
         loadWorklist();
     }
 
+    function handleResetFilter() {
+        filters.value = new WorklistFilter(); // Reset to default
+        pagination.value.page = 1;
+        loadWorklist();
+    }
+
     function setPage(pageNumber) {
-        if (pageNumber > 0 && pageNumber <= pagination.value.totalPages) {
+        if (pageNumber > 0 && pageNumber <= (pagination.value.totalPages || 1)) {
             pagination.value.page = pageNumber;
             loadWorklist();
         }
+    }
+
+    function setPageSize(size) {
+        pagination.value.size = size;
+        pagination.value.page = 1; // Reset to first page
+        loadWorklist();
+    }
+
+    // --- FIX: Add selection actions ---
+    function toggleSelection(orderId) {
+        const index = selection.value.indexOf(orderId);
+        if (index > -1) {
+            selection.value.splice(index, 1);
+        } else {
+            selection.value.push(orderId);
+        }
+    }
+
+    function clearSelection() {
+        selection.value = [];
+    }
+
+    function selectAllOnPage() {
+        // Select all items *currently* visible on the page
+        selection.value = items.value.map(item => item.id);
     }
 
     // --- Methods for "Save and Next" ---
@@ -1368,6 +1406,11 @@ export const useWorklistStore = defineStore('worklist', () => {
             items.value.splice(index, 1);
             pagination.value.totalElements = Math.max(0, pagination.value.totalElements - 1);
         }
+        // Also remove from selection
+        const selIndex = selection.value.indexOf(orderId);
+        if (selIndex > -1) {
+            selection.value.splice(selIndex, 1);
+        }
     }
 
     /**
@@ -1376,13 +1419,17 @@ export const useWorklistStore = defineStore('worklist', () => {
      * @returns {string | null} The ID of the next order, or null if none.
      */
     function getNextItem(currentOrderId) {
+        // The list has already had 'currentOrderId' removed by removeItem.
+        // The "next" item is simply the first one remaining in the list.
         if (!items.value || items.value.length === 0) {
-            // List is now empty, no next item
+            // List is now empty, check if we can go to the next page
+            if (pagination.value.page < pagination.value.totalPages) {
+                // This is tricky. We'll just signal "no more items" for now.
+                // A better implementation might auto-load the next page.
+                return null;
+            }
             return null;
         }
-        // The list has already had the item removed, so the "next"
-        // item is just the one at the current index (which is now the next item).
-        // We just return the first item in the remaining list.
         return items.value[0].id;
     }
 
@@ -1391,11 +1438,19 @@ export const useWorklistStore = defineStore('worklist', () => {
         loading,
         error,
         pagination,
-        filters,
+        filters, // Expose the reactive filter object
+        selection, // Expose selection
         worklist,
+        selectedCount,
+        isSelected,
         loadWorklist,
         setFilters,
+        handleResetFilter,
         setPage,
+        setPageSize,
+        toggleSelection,
+        clearSelection,
+        selectAllOnPage,
         removeItem,
         getNextItem,
     };
@@ -3423,85 +3478,6 @@ const formattedSuggestions = computed(() => {
 
 
 ================================================================================
-### PLIK: components/AppHeader.vue
-================================================================================
-
-<template>
-  <header class_name="relative flex h-16 shrink-0 items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-30">
-    <button
-        type="button"
-        class_name="-m-2.5 p-2.5 text-gray-700 dark:text-gray-200 lg:hidden"
-        @click="$emit('toggle-sidebar')"
-    >
-      <span class_name="sr-only">Open sidebar</span>
-      <Bars3Icon class_name="h-6 w-6" aria-hidden="true" />
-    </button>
-
-    <div class_name="flex-1"></div>
-
-    <div class_name="flex items-center gap-x-4 pr-4 sm:pr-6">
-      <Menu as="div" class_name="relative">
-        <MenuButton class_name="-m-1.5 flex items-center p-1.5">
-          <span class_name="sr-only">Open user menu</span>
-          <UserCircleIcon class_name="h-7 w-7 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-          <span class_name="hidden lg:flex lg:items-center">
-            <span class_name="ml-2 text-sm font-semibold text-gray-900 dark:text-gray-100" aria-hidden="true">
-              {{ auth.username || 'User' }}
-            </span>
-            <ChevronDownIcon class_name="ml-1 h-4 w-4 text-gray-500" aria-hidden="true" />
-          </span>
-        </MenuButton>
-        <transition
-            enter-active-class_name="transition ease-out duration-100"
-            enter-from-class_name="transform opacity-0 scale-95"
-            enter-to-class_name="transform opacity-100 scale-100"
-            leave-active-class_name="transition ease-in duration-75"
-            leave-from-class_name="transform opacity-100 scale-100"
-            leave-to-class_name="transform opacity-0 scale-95"
-        >
-          <MenuItems
-              class_name="absolute right-0 z-10 mt-2.5 w-48 origin-top-right rounded-md bg-white dark:bg-gray-700 py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
-          >
-            <MenuItem v-slot="{ active }">
-              <button
-                  @click="handleLogout"
-                  :class_name="[
-                  active ? 'bg-gray-100 dark:bg-gray-600' : '',
-                  'block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-100',
-                ]"
-              >
-                Sign out
-              </button>
-            </MenuItem>
-          </MenuItems>
-        </transition>
-      </Menu>
-    </div>
-  </header>
-</template>
-
-<script setup>
-import { inject } from 'vue';
-import { useRouter } from 'vue-router';
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue';
-import {
-  Bars3Icon,
-  UserCircleIcon,
-  ChevronDownIcon,
-} from '@heroicons/vue/24/outline';
-
-const auth = inject('auth');
-const router = useRouter();
-
-defineEmits(['toggle-sidebar']);
-
-const handleLogout = () => {
-  auth.logout();
-  router.push('/login');
-};
-</script>
-
-================================================================================
 ### PLIK: components/Button.vue
 ================================================================================
 
@@ -4586,6 +4562,156 @@ p {
 </style>
 
 ================================================================================
+### PLIK: components/ui/Badge.vue
+================================================================================
+
+<template><span :class="['badge', toneClass]"><slot/></span></template>
+<script setup>
+import { computed } from 'vue'
+const props = defineProps({ tone: { default: 'neutral' } })
+const toneClass = computed(() => ({ success:'badge-success', warning:'badge-warning', danger:'badge-danger', info:'badge-info', neutral:'badge-neutral' }[props.tone]))
+</script>
+
+
+================================================================================
+### PLIK: components/ui/Button.vue
+================================================================================
+
+<template>
+  <button :class="['btn', variantClass, sizeClass, block && 'w-full']" v-bind="$attrs">
+    <slot />
+  </button>
+</template>
+<script setup>
+import { computed } from 'vue'
+const props = defineProps({ variant: { default: 'primary' }, size: { default: 'md' }, block: Boolean })
+const variantClass = computed(() => ({ primary:'btn-primary', accent:'btn-accent', ghost:'btn-ghost' }[props.variant] || 'btn-primary'))
+const sizeClass = computed(() => ({ sm:'px-3 py-1.5 text-sm rounded-lg', md:'px-4 py-2 text-sm rounded-xl', lg:'px-5 py-3 text-base rounded-2xl' }[props.size]))
+</script>
+
+
+================================================================================
+### PLIK: components/ui/Card.vue
+================================================================================
+
+<template>
+  <div class="card p-5">
+    <div v-if="title" class="mb-3 flex items-center justify-between">
+      <h3 class="font-semibold text-slate-900">{{ title }}</h3>
+      <slot name="action"/>
+    </div>
+    <slot/>
+  </div>
+</template>
+<script setup>defineProps({ title:String })</script>
+
+
+================================================================================
+### PLIK: components/ui/Input.vue
+================================================================================
+
+<template>
+  <div class="space-y-1">
+    <label v-if="label" class="text-sm text-slate-600">{{ label }}</label>
+    <input class="input" v-bind="$attrs" :value="modelValue" @input="$emit('update:modelValue',$event.target.value)" />
+    <p v-if="hint" class="text-xs text-slate-500">{{ hint }}</p>
+  </div>
+</template>
+<script setup>defineProps({ modelValue:String, label:String, hint:String })</script>
+
+
+================================================================================
+### PLIK: components/ui/KpiTile.vue
+================================================================================
+
+<template>
+  <div class="kpi">
+    <div class="kpi-icon">{{ icon }}</div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">{{ label }}</div>
+      <div class="text-2xl font-semibold text-slate-900">{{ value }}</div>
+    </div>
+  </div>
+</template>
+<script setup>defineProps({ icon:{default:'★'}, label:String, value:String })</script>
+
+
+================================================================================
+### PLIK: components/ui/Modal.vue
+================================================================================
+
+<template>
+  <teleport to="body">
+    <div v-if="open" class="modal-backdrop" @click.self="$emit('close')">
+      <div class="modal">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-slate-900">{{ title }}</h3>
+          <button class="btn btn-ghost px-2 py-1" @click="$emit('close')">✕</button>
+        </div>
+        <slot/>
+        <div class="mt-5 flex justify-end gap-2">
+          <slot name="footer"/>
+        </div>
+      </div>
+    </div>
+  </teleport>
+</template>
+<script setup>defineProps({ open:Boolean, title:String })</script>
+
+
+================================================================================
+### PLIK: components/ui/ProgressBar.vue
+================================================================================
+
+<template><div class="progress"><div class="progress-inner" :style="{ width: pct + '%' }"></div></div></template>
+<script setup>
+import { computed } from 'vue'
+const props = defineProps({ value: { type:Number, default:0 } })
+const pct = computed(()=> Math.max(0, Math.min(100, props.value)))
+</script>
+
+
+================================================================================
+### PLIK: components/ui/Select.vue
+================================================================================
+
+<template>
+  <div class="space-y-1">
+    <label v-if="label" class="text-sm text-slate-600">{{ label }}</label>
+    <select class="select" v-bind="$attrs" :value="modelValue" @change="$emit('update:modelValue',$event.target.value)"><slot/></select>
+  </div>
+</template>
+<script setup>defineProps({ modelValue:[String,Number], label:String })</script>
+
+
+================================================================================
+### PLIK: components/ui/Tabs.vue
+================================================================================
+
+<template>
+  <div>
+    <div class="flex gap-2 mb-4">
+      <button v-for="t in tabs" :key="t" :class="['tab', modelValue===t && 'tab-active']" @click="$emit('update:modelValue', t)">{{ t }}</button>
+    </div>
+    <slot :active="modelValue"/>
+  </div>
+</template>
+<script setup>defineProps({ modelValue:String, tabs:{ type:Array, default:()=>[] } })</script>
+
+
+================================================================================
+### PLIK: components/ui/Toggle.vue
+================================================================================
+
+<template>
+  <button :aria-pressed="modelValue" :class="['toggle', modelValue && 'toggle-on']" @click="$emit('update:modelValue',!modelValue)">
+    <span class="toggle-dot absolute"></span>
+  </button>
+</template>
+<script setup>defineProps({ modelValue:Boolean })</script>
+
+
+================================================================================
 ### PLIK: components/forms/AddressCorrectionForm.vue
 ================================================================================
 
@@ -4733,91 +4859,186 @@ const selectDynamicSuggestion = (suggestion) => {
 
 
 ================================================================================
+### PLIK: components/layout/AppHeader.vue
+================================================================================
+
+<template>
+  <header class="sticky top-0 z-40 w-full border-b border-slate-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- Left -->
+      <div class="flex items-center gap-3">
+        <button
+            class="inline-flex items-center justify-center rounded-xl p-2 hover:bg-yellow-100 border border-transparent hover:border-yellow-300 transition"
+            @click="$emit('toggle-sidebar')"
+            aria-label="Toggle sidebar"
+        >
+          <Bars3Icon class="h-6 w-6 text-blue-700" aria-hidden="true" />
+        </button>
+        <div class="flex items-center gap-2">
+          <div class="h-8 w-8 rounded-xl bg-yellow-400 ring-2 ring-blue-600"></div>
+          <span class="font-semibold text-slate-900">Yellow–Blue UI</span>
+        </div>
+      </div>
+
+      <!-- Right -->
+      <Menu as="div" class="relative">
+        <MenuButton class="flex items-center p-1.5 rounded-full hover:bg-slate-100 transition">
+          <span class="sr-only">Open user menu</span>
+          <UserCircleIcon class="h-7 w-7 text-blue-600" aria-hidden="true" />
+          <span class="hidden lg:flex lg:items-center">
+            <span class="ml-2 text-sm font-semibold text-gray-900" aria-hidden="true">{{ username }}</span>
+            <ChevronDownIcon class="ml-1 h-4 w-4 text-gray-500" aria-hidden="true" />
+          </span>
+        </MenuButton>
+
+        <transition
+            enter-active-class="transition ease-out duration-100"
+            enter-from-class="transform opacity-0 scale-95"
+            enter-to-class="transform opacity-100 scale-100"
+            leave-active-class="transition ease-in duration-75"
+            leave-from-class="transform opacity-100 scale-100"
+            leave-to-class="transform opacity-0 scale-95"
+        >
+          <MenuItems
+              class="absolute right-0 z-50 mt-2.5 w-48 origin-top-right rounded-md bg-white py-1 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none"
+          >
+            <MenuItem v-slot="{ active }">
+              <button
+                  @click="handleLogout"
+                  :class="[
+                  active ? 'bg-yellow-50 text-gray-900' : 'text-gray-700',
+                  'block w-full px-4 py-2 text-left text-sm'
+                ]"
+              >
+                Sign out
+              </button>
+            </MenuItem>
+          </MenuItems>
+        </transition>
+      </Menu>
+    </div>
+  </header>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
+import { Bars3Icon, UserCircleIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth.js'
+
+defineEmits(['toggle-sidebar'])
+
+const router = useRouter()
+const auth = useAuthStore()
+
+// Defensive username: supports either flat or nested user objects
+const username = computed(() => auth?.username || auth?.user?.username || 'User')
+
+const handleLogout = async () => {
+  try {
+    await auth?.logout?.()
+  } catch (_) {
+    /* ignore */
+  }
+  router.push('/login')
+}
+</script>
+
+
+================================================================================
+### PLIK: components/layout/Navbar.vue
+================================================================================
+
+<template>
+  <header class="navbar">
+    <div class="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-brand"></div>
+        <div class="font-semibold">Yellow–Blue UI</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <Button size="sm">Primary</Button>
+        <Button size="sm" variant="accent">Accent</Button>
+      </div>
+    </div>
+  </header>
+</template>
+<script setup>
+import Button from '@/components/ui/Button.vue'
+</script>
+
+
+================================================================================
+### PLIK: components/layout/Sidebar.vue
+================================================================================
+
+<template>
+  <aside class="sidebar hidden lg:block">
+    <nav class="space-y-2">
+      <a v-for="item in items" :key="item.label" class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-50" href="#" @click.prevent="$emit('navigate', item.key)">
+        <span class="w-8 h-8 rounded-xl bg-brand"></span>
+        <span class="text-sm font-medium">{{ item.label }}</span>
+      </a>
+    </nav>
+  </aside>
+</template>
+<script setup>
+defineProps({ items: { type:Array, default:()=>[{key:'dashboard',label:'Dashboard'},{key:'worklist',label:'Worklist'},{key:'style',label:'Style Guide'}] } })
+</script>
+
+
+================================================================================
 ### PLIK: components/layout/SidebarNav.vue
 ================================================================================
+
+<template>
+  <aside class="w-60 bg-white border-r border-slate-200 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
+    <nav class="p-4 space-y-1">
+      <RouterLink to="/dashboard" class="nav-link">
+        <span class="i">📊</span><span>Dashboard</span>
+      </RouterLink>
+      <RouterLink to="/worklist" class="nav-link">
+        <span class="i">📋</span><span>Worklist</span>
+      </RouterLink>
+      <RouterLink v-if="isAdmin" to="/logs" class="nav-link">
+        <span class="i">📄</span><span>Logs</span>
+      </RouterLink>
+      <RouterLink v-if="isAdmin" to="/admin/aed-sftp" class="nav-link">
+        <span class="i">☁️</span><span>AED SFTP</span>
+      </RouterLink>
+      <RouterLink to="/pro" class="nav-link">
+        <span class="i">✨</span><span>Yellow–Blue Showcase</span>
+      </RouterLink>
+    </nav>
+  </aside>
+</template>
 
 <script setup>
 import { computed } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
 
 const authStore = useAuthStore();
-const user = computed(() => authStore.user);
-const isAdmin = computed(() => user.value?.roles?.includes('ADMIN'));
-
+const isAdmin = computed(() => authStore.user?.roles?.includes('ADMIN'));
 </script>
 
-<template>
-  <aside class="sidebar-nav">
-    <nav>
-      <ul>
-        <li><router-link to="/dashboard"><i class="icon icon-dashboard"></i> Dashboard</router-link></li>
-        <li><router-link to="/worklist"><i class="icon icon-list"></i> Worklist</router-link></li>
-        <li v-if="isAdmin"><router-link to="/admin/logs"><i class="icon icon-file-text"></i> Logs</router-link></li>
-        <li v-if="isAdmin"><router-link to="/admin/aed-sftp"><i class="icon icon-server"></i> AED SFTP</router-link></li>
-      </ul>
-    </nav>
-  </aside>
-</template>
-
 <style scoped>
-.sidebar-nav {
-  width: 240px;
-  background-color: #f8f9fa; /* Light background for sidebar */
-  border-right: 1px solid var(--color-border);
-  padding: calc(var(--spacing-unit) * 2);
-  height: calc(100vh - 60px); /* Full height minus header */
-  position: sticky; /* Make sidebar stick */
-  top: 60px; /* Position below header */
-  overflow-y: auto; /* Allow scrolling if content overflows */
-  flex-shrink: 0; /* Prevent sidebar from shrinking */
+.nav-link {
+  @apply flex items-center gap-3 px-3 py-2 rounded-xl transition-colors text-slate-700;
 }
-
-nav ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.nav-link:hover {
+  /* blue hover with subtle yellow halo */
+  background: linear-gradient(0deg, rgba(250,204,21,0.18), rgba(250,204,21,0.18)), #fff; /* yellow-400@18% over white */
+  outline: 1px solid rgba(37,99,235,0.25); /* blue-600@25% */
 }
-
-nav li {
-  margin-bottom: var(--spacing-unit);
+.nav-link.router-link-active {
+  background: linear-gradient(0deg, rgba(37,99,235,0.10), rgba(37,99,235,0.10)), #fff;
+  color: #1d4ed8; /* blue-700 */
+  box-shadow: 0 0 0 2px #facc15 inset; /* yellow-400 ring */
 }
-
-nav a {
-  display: flex;
-  align-items: center;
-  padding: calc(var(--spacing-unit)) calc(var(--spacing-unit) * 1.5);
-  border-radius: 4px;
-  color: var(--color-text);
-  text-decoration: none;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-nav a i {
-  margin-right: var(--spacing-unit);
-  /* Basic icon styling - replace with actual icon font/SVG setup */
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  /* background: gray; */ /* Placeholder */
-}
-
-nav a:hover {
-  background-color: var(--color-border);
-}
-
-nav a.router-link-exact-active {
-  background-color: var(--color-primary);
-  color: white;
-  font-weight: 500;
-}
-/* Basic icon placeholders - you'll need an icon library like Feather Icons */
-.icon-dashboard::before { content: '📊'; }
-.icon-list::before { content: '📋'; }
-.icon-file-text::before { content: '📄'; }
-.icon-server::before { content: '☁️'; }
-
-
+.i { width: 1.25rem; text-align: center; }
 </style>
+
 
 ================================================================================
 ### PLIK: components/modals/ErrorDetailsModal.vue
@@ -5004,6 +5225,83 @@ const resetState = () => {
 ul li { cursor: pointer; padding: 5px; margin: 2px 0; }
 ul li.selected { background-color: #e0e0ff; }
 </style>
+
+================================================================================
+### PLIK: components/shared/BaseModal.vue
+================================================================================
+
+<template>
+  <TransitionRoot as="template" :show="isOpen">
+    <Dialog as="div" class="relative z-50" @close="$emit('close')">
+      <TransitionChild
+          as="template"
+          enter="ease-out duration-200" enter-from="opacity-0" enter-to="opacity-100"
+          leave="ease-in duration-150" leave-from="opacity-100" leave-to="opacity-0"
+      >
+        <div class="fixed inset-0 bg-black/40" />
+      </TransitionChild>
+
+      <div class="fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-6">
+          <TransitionChild
+              as="template"
+              enter="ease-out duration-200"
+              enter-from="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              enter-to="opacity-100 translate-y-0 sm:scale-100"
+              leave="ease-in duration-150"
+              leave-from="opacity-100 translate-y-0 sm:scale-100"
+              leave-to="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+          >
+            <DialogPanel
+                class="w-full max-w-lg transform overflow-hidden rounded-2xl bg-white text-left align-middle shadow-xl transition-all ring-1 ring-black/5"
+            >
+              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <DialogTitle class="text-base font-semibold text-slate-900">
+                  <slot name="title">Dialog</slot>
+                </DialogTitle>
+                <button
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100 transition"
+                    @click="$emit('close')"
+                    aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div class="px-5 py-4">
+                <slot />
+              </div>
+
+              <div class="px-5 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+                <slot name="footer">
+                  <button
+                      type="button"
+                      class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100"
+                      @click="$emit('close')"
+                  >
+                    Close
+                  </button>
+                </slot>
+              </div>
+            </DialogPanel>
+          </TransitionChild>
+        </div>
+      </div>
+    </Dialog>
+  </TransitionRoot>
+</template>
+
+<script setup>
+import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
+
+defineProps({
+  isOpen: { type: Boolean, required: true }
+})
+
+defineEmits(['close'])
+</script>
+
 
 ================================================================================
 ### PLIK: components/common/ActionButton.vue
@@ -6081,17 +6379,10 @@ export class BulkEditController {
 ================================================================================
 
 // ============================================================================
-// Frontend: Update CorrectionEditorController
+// Frontend: Update CorrectionEditorController (Supersedes previous version)
 // FILE: src/controllers/CorrectionEditorController.js
-// REASON: Populate 'name' and 'alias' fields in editedPickup/editedDelivery
-//         state upon load, acceptSuggestion, and useOriginal.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-/**
- * ARCHITECTURE: CorrectionEditorController orchestrates the "side-by-side diff" editor.
- * It follows the manifesto by isolating all IO and decision logic away from the component tree.
- * REFACTORED: Now accepts a GeocodeWithCacheController.
- * UPDATED: Now maps 'name' and 'alias' into the editable state.
- */
 import { Address } from "@/domain/WorkbenchModels";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
@@ -6102,7 +6393,7 @@ export class CorrectionEditorController {
     this.api = api;
     this.geocoder = geocoder instanceof GeocodeWithCacheController ? geocoder : null;
     if (!this.geocoder) {
-      console.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
+      log.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
     }
     this.orderId = null;
     this.detail = null;
@@ -6251,7 +6542,6 @@ export class CorrectionEditorController {
   }
 
   // --- DEPRECATED SAVE METHODS ---
-  // Kept for facade compatibility
   async saveAcceptSuggestion(side) {
     log.warn("DEPRECATED: saveAcceptSuggestion called. Use SaveFlowController.");
     return Result.fail(new Error("Save logic is deprecated."));
@@ -6291,12 +6581,13 @@ export class CorrectionEditorController {
   }
 }
 
-// Basic logger shim
+// *** ADDED LOG SHIM ***
 const log = {
   info: (...args) => console.info(...args),
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***
 
 ================================================================================
 ### PLIK: controllers/EditorAutosaveController.js
@@ -6479,17 +6770,10 @@ export class EditorDiffController {
 ================================================================================
 
 // ============================================================================
-// Frontend: Update EditorFacade.js
+// Frontend: Update EditorFacade.js (Supersedes previous version)
 // FILE: src/controllers/EditorFacade.js
-// REASON: Draw markers and route on load. Pass 'side' to preview controller.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-/**
- * ARCHITECTURE: EditorFacade wraps CorrectionEditorController and adds map preview conveniences.
- * It follows the manifesto by exposing intent methods used by the Editor view without leaking internals.
- * REFACTORED:
- * - 'load' now draws both markers and the OSRM route on success.
- * - 'accept...Suggestion' methods now pass the correct 'side' to the previewer.
- */
 import { Result } from "@/domain/Result";
 import { SuggestionPreviewController } from "@/controllers/SuggestionPreviewController";
 
@@ -6502,7 +6786,6 @@ export class EditorFacade {
 
   async load(orderId) {
     const loadResult = await this.ctrl.loadOrder(orderId);
-
     // --- NEW: Draw markers and route on load ---
     if (loadResult.ok && this.preview) {
       try {
@@ -6583,7 +6866,6 @@ export class EditorFacade {
     // Now focus the map on the newly geocoded point
     const snap = this.ctrl.snapshot();
     const addr = (side === 'pickup') ? snap.editedPickup : snap.editedDelivery;
-
     if (this.preview) {
       await this.preview.policy.focusAddress(side, addr);
     }
@@ -6618,12 +6900,13 @@ export class EditorFacade {
   }
 }
 
-// Basic logger shim
+// *** ADDED LOG SHIM ***
 const log = {
   info: (...args) => console.info(...args),
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***
 
 ================================================================================
 ### PLIK: controllers/EditorFocusController.js
@@ -7168,8 +7451,11 @@ export class VerificationQueueController {
 ### PLIK: controllers/GeocodeWithCacheController.js
 ================================================================================
 
+// ============================================================================
+// Frontend: Fix GeocodeWithCacheController (Supersedes previous version)
 // FILE: src/controllers/GeocodeWithCacheController.js
-// MODIFIED - Request adapter without specifying provider
+// REASON: Added 'log' shim for console logging.
+// ============================================================================
 import { AddressGeocodeCache } from "@/services/AddressGeocodeCache";
 import { QuotaBackoffService } from "@/services/QuotaBackoffService";
 
@@ -7187,8 +7473,7 @@ export class GeocodeWithCacheController {
         this.geoRuntime = geoRuntime;
         this.cache = cache;
         this.backoff = backoff;
-        this._geocoderAdapter = null;
-        // Lazy load
+        this._geocoderAdapter = null; // Lazy load
     }
 
     _getAdapter() {
@@ -7216,7 +7501,6 @@ export class GeocodeWithCacheController {
             return hit;
         }
         log.debug("[GeocodeCache] Cache miss for address:", address);
-
         // *** FIX: Ensure adapter is requested *before* task execution if not already loaded ***
         try {
             this._getAdapter();
@@ -7243,10 +7527,12 @@ export class GeocodeWithCacheController {
     }
 }
 
+// *** ADDED LOG SHIM ***
 const log = {
     debug: (...args) => console.debug(...args),
     error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***
 
 ================================================================================
 ### PLIK: controllers/HealthGateController.js
@@ -7313,11 +7599,10 @@ export class IdempotentSaveController {
 ================================================================================
 
 // ============================================================================
-// Frontend: Update IntegrationOrchestrator (Final Version)
+// Frontend: Update IntegrationOrchestrator (Supersedes previous version)
 // FILE: src/controllers/IntegrationOrchestrator.js
-// REASON: Instantiate GeocodeWithCacheController correctly.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-// FILE: src/controllers/IntegrationOrchestrator.js
 import { OrdersQueueService } from "@/services/OrdersQueueService";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
 import { PollingService } from "@/services/PollingService";
@@ -7377,12 +7662,12 @@ export class IntegrationOrchestrator {
       // Geocoder is handled by the injected _geocodeController
       placesAdapter = this._geoRuntime.placesAdapter(); // May return null
       if(placesAdapter) {
-        console.info("[IntegrationOrchestrator] Places adapter obtained for EditorFacade.");
+        log.info("[IntegrationOrchestrator] Places adapter obtained for EditorFacade.");
       } else {
-        console.info("[IntegrationOrchestrator] Places adapter is null/unavailable. Editor hints disabled.");
+        log.info("[IntegrationOrchestrator] Places adapter is null/unavailable. Editor hints disabled.");
       }
     } catch(e) {
-      console.error("IntegrationOrchestrator: Failed to get configured places adapter from GeoRuntime:", e.message);
+      log.error("IntegrationOrchestrator: Failed to get configured places adapter from GeoRuntime:", e.message);
       // Continue with null adapter
     }
 
@@ -7399,6 +7684,14 @@ export class IntegrationOrchestrator {
     return this._editor;
   }
 }
+
+// *** ADDED LOG SHIM ***
+const log = {
+  info: (...args) => console.info(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
+};
+// *** END LOG SHIM ***
 
 ================================================================================
 ### PLIK: controllers/LoginFormController.js
@@ -8243,11 +8536,11 @@ export class TesSuggestionController {
 ================================================================================
 
 // ============================================================================
-// Frontend: Fix TriageDashboardController
-// FILE: src/controllers/TriageDashboardController.js (Supersedes previous version)
-// REASON: Remove call to non-existent 'getRecentBatches' method.
-// ============================================================================
+// Frontend: Fix TriageDashboardController (Supersedes previous version)
 // FILE: src/controllers/TriageDashboardController.js
+// REASON: Remove call to non-existent 'getRecentBatches' method
+//         which is not implemented in AddressExceptionApi.js.
+// ============================================================================
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
 import { PollingService } from "@/services/PollingService";
@@ -8259,7 +8552,7 @@ export class TriageDashboardController {
     this.loading = false;
     this.error = null;
     this.kpis = null;
-    this.recentBatches = [];
+    this.recentBatches = []; // Keep property but will remain empty
     this.pendingByErrorType = [];
     this._pollHandles = [];
   }
@@ -8271,12 +8564,12 @@ export class TriageDashboardController {
     // *** MODIFICATION: Removed getRecentBatches() call ***
     const [kpiRes, typeRes] = await Promise.all([
       this.api.getTriageKpis(),
-      // this.api.getRecentBatches(), // <-- This line should be gone
-      this.api.getPendingByErrorType(), // <-- This line is correct
+      // this.api.getRecentBatches(), // <-- This line is REMOVED
+      this.api.getPendingByErrorType(),
     ]);
     // *** END MODIFICATION ***
 
-    // Safety check for kpiRes (solves 'items' of undefined)
+    // Safety check for kpiRes
     if (!kpiRes.ok) return this._fail(kpiRes.error);
     if (!kpiRes.value) {
       console.warn("TriageDashboardController: getTriageKpis returned OK but value is null/undefined.");
@@ -8286,7 +8579,7 @@ export class TriageDashboardController {
     }
 
     // Safety check for batchRes (Set to empty array)
-    this.recentBatches = [];
+    this.recentBatches = []; // Will not be populated
 
     // Safety check for typeRes
     if (!typeRes.ok) return this._fail(typeRes.error);
@@ -8302,16 +8595,16 @@ export class TriageDashboardController {
       const r = await this.api.getTriageKpis();
       if (r.ok && r.value) this.kpis = r.value;
     });
+
     // *** MODIFICATION: Removed polling for batches ***
-    // const b = this.polling.start("batches", intervalMs, async () => {
-    //   const r = await this.api.getRecentBatches();
-    //   if (r.ok) this.recentBatches = Array.isArray(r.value) ? r.value : [];
-    // });
+    // const b = this.polling.start(...)
     // *** END MODIFICATION ***
+
     const e = this.polling.start("errorsByType", intervalMs, async () => {
       const r = await this.api.getPendingByErrorType();
       if (r.ok) this.pendingByErrorType = Array.isArray(r.value) ? r.value : [];
     });
+
     this._pollHandles = [k, e]; // Removed 'b' from handles
     return this._pollHandles.slice();
   }
@@ -8582,12 +8875,12 @@ export class WorklistExportController {
 ================================================================================
 
 // ============================================================================
-// Frontend: Fix WorklistFacade import
-// FILE: src/controllers/WorklistFacade.js (Supersedes previous version)
-// REASON: Correct the case of the 'worklistStore' import to 'WorklistStore'
-//         to match the filename, fixing the Docker build failure.
-// ============================================================================
+// Frontend: Fix WorklistFacade (Supersedes previous version)
 // FILE: src/controllers/WorklistFacade.js
+// REASON: Correct the import case of 'WorklistStore'.
+//         Align method calls (e.g., loadWorklistPage -> loadWorklist)
+//         with the fixed WorklistStore.
+// ============================================================================
 import { useWorklistStore } from "@/stores/WorklistStore.js"; // *** CORRECTED FILE CASE ***
 import { PollingService } from "@/services/PollingService.js";
 import { Result } from "@/domain/Result";
@@ -8600,12 +8893,17 @@ export class WorklistFacade {
     }
 
     async initAndLoad(filters = {}) {
+        // *** FIX: Call correct store method ***
         if (Object.keys(filters).length > 0) {
-            this._store.filter = this._store.filter.withPatch(filters);
-            this._store.pagination.currentPage = 1;
+            this._store.setFilters(filters); // This will reset page and load
+        } else {
+            await this._store.loadWorklist();
         }
-        const result = await this._store.loadWorklistPage();
-        return result.ok ? Result.ok(this.snapshot()) : Result.fail(result.error);
+        // *** END FIX ***
+
+        return this._store.error ?
+            Result.fail(new Error(this._store.error)) :
+            Result.ok(this.snapshot());
     }
 
     startPolling(intervalMs = 15000) {
@@ -8613,10 +8911,9 @@ export class WorklistFacade {
             this.stopPolling();
         }
         this._pollHandle = this.poll.start("worklist", intervalMs, async () => {
-            // CORRECTED: Use the correct store action name 'loadWorklistPage'
-            await this._store.loadWorklistPage();
+            // *** FIX: Call correct store method ***
+            await this._store.loadWorklist();
         });
-        // Removed console.log for production readiness
         return true;
     }
 
@@ -8624,7 +8921,6 @@ export class WorklistFacade {
         if (this._pollHandle) {
             this.poll.stop("worklist");
             this._pollHandle = null;
-            // Removed console.log for production readiness
             return true;
         }
         return false;
@@ -8632,44 +8928,56 @@ export class WorklistFacade {
 
     snapshot() {
         return {
-            filter: { ...this._store.filter },
+            // *** FIX: Use correct store state/getters ***
+            filter: { ...this._store.filters.toPlainObject() },
             items: [...this._store.items],
             pagination: { ...this._store.pagination },
             loading: this._store.loading,
             error: this._store.error,
             selection: [...this._store.selection],
+            // *** END FIX ***
         };
     }
 
     async applyFilterPatch(patch) {
-        return await this._store.applyFilterPatch(patch);
+        // *** FIX: Call correct store method ***
+        await this._store.setFilters(patch);
+        return this.snapshot();
     }
 
     async resetFilter() {
-        return await this._store.resetFilter();
+        // *** FIX: Call correct store method ***
+        await this._store.handleResetFilter();
+        return this.snapshot();
     }
 
     async goToPage(pageNumber) {
-        return await this._store.goToPage(pageNumber);
+        // *** FIX: Call correct store method ***
+        await this._store.setPage(pageNumber);
+        return this.snapshot();
     }
 
     async changePageSize(size) {
-        return await this._store.changePageSize(size);
+        // *** FIX: Call correct store method ***
+        await this._store.setPageSize(size);
+        return this.snapshot();
     }
 
     toggleSelection(orderId) {
+        // *** FIX: Call correct store method ***
         this._store.toggleSelection(orderId);
     }
 
     clearSelection() {
+        // *** FIX: Call correct store method ***
         this._store.clearSelection();
     }
 
     getSelection() {
+        // *** FIX: Read from state ***
         return [...this._store.selection];
     }
 }
-
 
 ================================================================================
 ### PLIK: controllers/WorklistKpiController.js
@@ -9114,406 +9422,380 @@ const handleChangePassword = () => {
 ================================================================================
 
 <template>
-  <div class="p-4 sm:p-6 lg:p-8">
-    <div v-if="state.loading" class="text-center">
-      <p>Loading order details...</p>
-    </div>
-    <div v-else-if="state.error" class="text-red-500 text-center">
-      <p>
-        Failed to load order details: {{ state.error }}
-        <span v-if="orderId"> (ID: {{ orderId }})</span>
-      </p>
-    </div>
-
-    <div v-else-if="state.detail" class="space-y-8">
-      <PageHeader
-          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
-          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
-      />
-
-      <div class="mt-8" style="min-height: 400px">
-        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
-        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
-          <p>
-            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-          </p>
+  <div class="min-h-[calc(100vh-8rem)] bg-white">
+    <!-- Header -->
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="h-8 w-8 rounded-xl bg-yellow-400 ring-2 ring-blue-600"></div>
+          <h1 class="text-xl font-semibold text-slate-900">Correction Editor</h1>
         </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AddressCorrectionCard
-            title="Pickup Address"
-            side="pickup"
-            :original-address="state.detail.originalPickup"
-            :stored-address="state.detail.pickupStoredAddress"
-            :reason-code="state.detail.pickupReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedPickup"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('pickup', $event)"
-            @geocode="handleGeocode('pickup')"
-            @save="handleSave('pickup')"
-            @use-original="handleUseOriginal('pickup')"
-        />
-
-        <AddressCorrectionCard
-            title="Delivery Address"
-            side="delivery"
-            :original-address="state.detail.originalDelivery"
-            :stored-address="state.detail.deliveryStoredAddress"
-            :reason-code="state.detail.deliveryReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedDelivery"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('delivery', $event)"
-            @geocode="handleGeocode('delivery')"
-            @save="handleSave('delivery')"
-            @use-original="handleUseOriginal('delivery')"
-        />
-      </div>
-
-      <div
-          v-if="isPending"
-          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
-      >
-        <div class="flex items-center">
-          <input
-              id="applyToSimilar"
-              type="checkbox"
-              v-model="applyToSimilar"
-              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
-          >Apply this correction to all similar pending errors</label
-          >
-        </div>
-
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center gap-2">
           <button
-              @click="handleSave('both')"
-              :disabled="state.saveLoading"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+              class="px-4 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition"
+              :disabled="busy || !canSave"
+              @click="saveAll"
           >
-            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+            {{ busy ? 'Saving…' : 'Save' }}
+          </button>
+          <button
+              class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50"
+              @click="useOriginal"
+          >
+            Use Original
           </button>
         </div>
       </div>
-      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
-        <p class="font-semibold text-gray-700 dark:text-gray-200">
-          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
-          {{ state.detail.processingStatus }})
-        </p>
-      </div>
+    </header>
+
+    <!-- Body -->
+    <div class="mx-auto max-w-7xl px-4 py-6 grid gap-6 lg:grid-cols-2">
+      <!-- Left: Edit Panels -->
+      <section class="space-y-6">
+        <!-- Editable Address -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+          <h2 class="text-lg font-semibold mb-4 text-slate-900">Editable Address</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="text-sm">
+              <span class="text-slate-600">Alias</span>
+              <input class="input" v-model="editable.alias" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Attention Name</span>
+              <input class="input" v-model="editable.attentionName" />
+            </label>
+            <label class="text-sm sm:col-span-2">
+              <span class="text-slate-600">Street</span>
+              <input class="input" v-model="editable.street" @input="onInput('street', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">House No</span>
+              <input class="input" v-model="editable.houseNo" @input="onInput('houseNo', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Postal Code</span>
+              <input class="input" v-model="editable.postalCode" @input="onInput('postalCode', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">City</span>
+              <input class="input" v-model="editable.city" @input="onInput('city', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Country</span>
+              <input class="input" v-model="editable.country" @input="onInput('country', $event.target.value)" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Dynamic Suggestions -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold text-slate-900">Suggestions</h2>
+            <div class="flex gap-2">
+              <input
+                  class="input w-56"
+                  placeholder="Find by place name…"
+                  v-model="placeSearchQuery"
+                  @input="debouncedNameSearch"
+              />
+              <button
+                  class="px-3 py-2 rounded-xl text-slate-800 bg-white border border-slate-200 hover:bg-slate-50"
+                  :disabled="isLoadingSuggestions"
+                  @click="getDynamicSuggestionsByAddress"
+              >
+                {{ isLoadingSuggestions ? 'Searching…' : 'Search by Address' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isLoadingSuggestions" class="text-sm text-slate-600">Loading suggestions…</div>
+          <ul v-else class="divide-y divide-slate-100">
+            <li
+                v-for="(s, idx) in suggestions"
+                :key="idx"
+                class="py-3 flex items-center justify-between"
+            >
+              <div class="text-sm">
+                <div class="font-medium text-slate-900">{{ s.fullAddressLabel || formatSuggestion(s) }}</div>
+                <div class="text-slate-500">
+                  Score: {{ s.matchScore?.toFixed(2) || 'N/A' }}, Level: {{ s.matchLevel || 'N/A' }}, Source: {{ s.providerSource || 'N/A' }}
+                </div>
+              </div>
+              <button class="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-slate-900"
+                      @click="selectDynamicSuggestion(s)">
+                Use
+              </button>
+            </li>
+          </ul>
+          <p v-if="!isLoadingSuggestions && suggestions.length===0" class="text-sm text-slate-500">No suggestions.</p>
+        </div>
+
+        <!-- Diff Snapshot -->
+        <AddressDiffCard
+            title="Snapshot"
+            :address="editable"
+            :stored-address="stored"
+            stored-label="Stored (TrackIT)"
+            class="bg-white border border-slate-200 rounded-2xl"
+        />
+      </section>
+
+      <!-- Right: Map & Actions -->
+      <section class="space-y-6">
+        <CorrectionMap
+            :address="editable"
+            :center="{ lat: Number(editable.latitude) || 52.2319, lng: Number(editable.longitude) || 21.0067 }"
+            :zoom="13"
+            @geocode="handleGeocode"
+        />
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
+          <button
+              class="w-full px-4 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition"
+              :disabled="busy"
+              @click="geocodeCurrent"
+          >
+            {{ busy ? 'Geocoding…' : 'Geocode Address' }}
+          </button>
+          <button
+              class="w-full px-4 py-2 rounded-xl text-slate-800 bg-white border border-slate-200 hover:bg-slate-50"
+              :disabled="busy"
+              @click="verifyViaJob"
+          >
+            Verify via Job Queue
+          </button>
+        </div>
+      </section>
     </div>
+
+    <!-- Modal: Async Verification Flow -->
+    <BaseModal :is-open="modal.open" @close="closeModal">
+      <template #title>Verification</template>
+      <template #default>
+        <div class="space-y-3">
+          <p v-if="modal.status==='PENDING'">Waiting for results…</p>
+          <p v-if="modal.error" class="text-red-600">Błąd: {{ modal.error }}</p>
+
+          <ul v-if="modal.status==='COMPLETED' && modal.suggestions.length">
+            <li
+                v-for="(s, i) in modal.suggestions"
+                :key="i"
+                class="p-2 rounded cursor-pointer hover:bg-slate-50"
+                :class="{ 'bg-amber-100' : modal.selected === s }"
+                @click="modal.selected = s"
+            >
+              {{ s.fullAddressLabel }}
+            </li>
+          </ul>
+          <p v-else-if="modal.status==='COMPLETED'" class="text-slate-600">Brak sugestii.</p>
+        </div>
+      </template>
+      <template #footer>
+        <button class="px-3 py-2 rounded-xl border border-slate-200" @click="closeModal">Close</button>
+        <button
+            class="px-3 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
+            :disabled="!modal.selected || modal.busy"
+            @click="submitCorrection"
+        >
+          Apply
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <script setup>
-// *** Import 'watch' ***
-import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from '@/composables/useToast.js';
-import PageHeader from '@/components/PageHeader.vue';
-import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
+import { ref, reactive } from 'vue';
+import { useRoute } from 'vue-router';
+import apiClient from '@/services/Api.js';
+import CorrectionMap from '@/components/CorrectionMap.vue';
+import AddressDiffCard from '@/components/AddressDiffCard.vue';
+import BaseModal from '@/components/Shared/BaseModal.vue';
 
-// Import Manifesto architecture controllers
-import { MapController } from "@/controllers/MapController.js";
-import { EditorFacade } from "@/controllers/EditorFacade.js";
-import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-// *** REMOVED IdempotentSaveController ***
-import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
-import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
-import { Address } from '@/domain/WorkbenchModels.js';
-import { AddressExceptionApi } from "@/services/AddressExceptionApi.js"; // *** ADDED IMPORT ***
-
-// === Injections ===
-const orchestrator = inject("orchestrator");
-const geoRuntime = inject("geoRuntime");
-const showNotification = inject("showNotification");
-const toast = useToast();
-
-// === Route & Store ===
 const route = useRoute();
-const router = useRouter();
-const worklistStore = useWorklistStore();
-const orderId = ref(route.params.id);
+const orderId = String(route.params.id || '');
 
-// === Local State ===
-const state = reactive({
-  loading: true,
-  error: null,
-  detail: null,
-  editedPickup: new Address(),
-  editedDelivery: new Address(),
-  geocodeLoading: false,
-  saveLoading: false,
-});
-const applyToSimilar = ref(false);
-const routeInfo = ref(null);
-const mapContainer = ref(null); // DOM ref for map
-
-// === Controller Setup ===
-let mapController = null;
-let editorFacade = null;
-let saveFlow = null;
-let commandBus = null;
-
-const isPending = computed(
-    () => state.detail?.processingStatus === 'PENDING_VERIFICATION'
-);
-
-// === Lifecycle Hooks ===
-onMounted(async () => {
-  if (!orchestrator || !geoRuntime) {
-    state.error = "Critical error: Orchestrator or GeoRuntime not injected.";
-    state.loading = false;
-    return;
-  }
-
-  // 1. Initialize Editor Facade (mapController is null for now)
-  editorFacade = orchestrator.getEditor(null);
-
-  // 2. Initialize Save Controllers
-  // *** THIS IS THE FIX for the 'deprecated' warning ***
-  const api = new AddressExceptionApi();
-  saveFlow = new SaveFlowController(editorFacade, worklistStore, api);
-  // *** END FIX ***
-  commandBus = new EditorCommandBus(editorFacade, saveFlow);
-
-  // 3. Load Order Data (this will trigger the 'watch' block to init the map)
-  await loadOrderData();
+const stored = ref(null);
+const editable = reactive({
+  alias: '', attentionName: '',
+  street: '', houseNo: '', postalCode: '', city: '', country: 'Polska',
+  latitude: '', longitude: ''
 });
 
-onUnmounted(() => {
-  // Clean up map
-  if (mapController) {
-    mapController.destroy();
-    mapController = null;
-  }
-});
+const busy = ref(false);
+const canSave = ref(true);
 
-// *** FIX: This is the correct way to watch the ref ***
-// This watch fires when the 'mapContainer' ref changes.
-// 1. On load, it's null.
-// 2. After loadOrderData() sets state.detail, Vue renders the <div>.
-// 3. Vue attaches the <div> to the ref, so mapContainer.value becomes non-null.
-// 4. This 'watch' block fires, and we can safely initialize the map.
-watch(mapContainer, async (newMapEl) => {
-  // 1. If the element (newMapEl) exists and the controller (mapController) doesn't...
-  if (newMapEl && !mapController) {
-    log.info("Map container is now in DOM. Initializing MapController...");
-    try {
-      const mapAdapter = geoRuntime.mapAdapter();
-      mapController = new MapController(mapAdapter);
+/* ----------------------- Suggestions (address/name) ----------------------- */
+const suggestions = ref([]);
+const isLoadingSuggestions = ref(false);
+const placeSearchQuery = ref('');
+let debounceTimer = null;
 
-      // 2. Initialize the map controller with the real DOM element
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
-
-      // 3. Inject the *initialized* map into the facade
-      editorFacade.preview = orchestrator.createPreviewController(mapController);
-      log.info("MapController initialized and injected into facade.");
-
-      // 4. Now that the map is ready, draw the initial route
-      if (state.editedPickup && state.editedDelivery) {
-        await editorFacade.preview.policy.showAndFitRoute(
-            state.editedPickup,
-            state.editedDelivery
-        );
-        log.info("Initial route and markers drawn.");
-      }
-
-      // 5. Fetch route stats
-      await refreshRouteInfo();
-
-    } catch (err) {
-      log.error("Failed to initialize MapController in watch block:", err);
-      toast.error("Failed to load map: " + err.message, 10000);
-    }
-  }
-  // 6. If the element is gone (component unmounted) and controller *does* exist...
-  else if (!newMapEl && mapController) {
-    log.info("Map container removed. Destroying map controller.");
-    await mapController.destroy();
-    mapController = null;
-    if (editorFacade) editorFacade.preview = null;
-  }
-});
-// *** END FIX ***
-
-
-// === Methods ===
-async function loadOrderData() {
-  state.loading = true;
-  state.error = null;
-
-  // Destroy the old map controller IF it exists
-  // This sets mapContainer.value to null (when v-if hides it), triggering the watch's cleanup
-  if (mapController) {
-    await mapController.destroy();
-    mapController = null;
-    if (editorFacade) editorFacade.preview = null;
-  }
-
-  // Set detail to null to hide the old view and unmount the mapContainer ref
-  state.detail = null;
-
-  // Wait for the DOM to update (v-if="state.detail" is now false)
-  await nextTick();
-
-  const result = await editorFacade.load(orderId.value);
-
-  if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
-    // Setting these will trigger the v-else-if and THEN the mapContainer watch
-    state.detail = snap.detail;
-    state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.editedDelivery;
-  } else {
-    state.error = result.error.message;
-    toast.error(`Failed to load order: ${state.error}`, 10000);
-  }
-  state.loading = false;
+function formatSuggestion(s) {
+  const parts = [s.street, s.houseNumber, s.postalCode, s.city].filter(Boolean);
+  return parts.join(' ');
 }
 
-// Fetches route stats from OSRM (via proxy)
-async function refreshRouteInfo() {
-  if (!geoRuntime || !geoRuntime._config.routingUrl) {
-    log.warn("Cannot refresh route info: No routingUrl in geoRuntime.");
+function updateField(field, value) { editable[field] = value; }
+
+const onInput = (field, value) => {
+  updateField(field, value);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { getDynamicSuggestionsByAddress(); }, 600);
+};
+
+const getDynamicSuggestionsByAddress = async () => {
+  const query = {
+    street: editable.street,
+    houseNumber: editable.houseNo,
+    postalCode: editable.postalCode,
+    city: editable.city,
+    country: 'Polska'
+  };
+  if (Object.values(query).every(v => !v || String(v).trim() === '')) {
+    suggestions.value = [];
     return;
   }
-
-  const p = state.editedPickup;
-  const d = state.editedDelivery;
-
-  if (!p?.longitude || !p?.latitude || !d?.longitude || !d?.latitude) {
-    routeInfo.value = null;
-    return;
-  }
-
-  const coords = `${p.longitude},${p.latitude};${d.longitude},${d.latitude}`;
-  const url = `${geoRuntime._config.routingUrl}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
-
+  isLoadingSuggestions.value = true;
   try {
-    const response = await fetch(url); // Use fetch, as it's not an API call
-    if (!response.ok) throw new Error(`OSRM responded with ${response.status}`);
-    const data = await response.json();
-    if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
-      routeInfo.value = {
-        distance: data.routes[0].distance,
-        duration: data.routes[0].duration,
-      };
-    } else {
-      routeInfo.value = null;
-    }
-  } catch (error) {
-    log.error('Error fetching OSRM route info:', error);
-    routeInfo.value = null;
-    toast.error(`Could not calculate route: ${error.message}`, 4000);
-  }
-}
-
-// Update local state and facade state
-function updateAddress(side, newAddressObject) {
-  if (side === 'pickup') {
-    state.editedPickup = newAddressObject;
-    editorFacade.setManualPickup(newAddressObject);
-  } else {
-    state.editedDelivery = newAddressObject;
-    editorFacade.setManualDelivery(newAddressObject);
-  }
-  // After manual edit, refresh route
-  refreshRouteInfo();
-  if (mapController) {
-    editorFacade.refreshRoute(); // Redraw map line
-  }
-}
-
-async function handleGeocode(side) {
-  state.geocodeLoading = true;
-  toast.info(`Geocoding ${side} address...`, 2000);
-
-  // This uses the Manifesto stack (GeoRuntime -> NominatimAdapter)
-  const result = await editorFacade.geocodeAndFocus(side);
-
-  if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
-    if (side === 'pickup') {
-      state.editedPickup = snap.editedPickup;
-    } else {
-      state.editedDelivery = snap.editedDelivery;
-    }
-    await editorFacade.refreshRoute(); // Redraw route
-    await refreshRouteInfo(); // Get new stats
-    toast.success('Geocoding successful. Address updated.', 3000);
-  } else {
-    log.error(`Geocode failed for ${side}:`, result.error);
-    toast.error(`Geocoding failed: ${result.error.message}`, 5000);
-  }
-  state.geocodeLoading = false;
-}
-
-function handleUseOriginal(side) {
-  if (side === 'pickup') {
-    commandBus.useOriginalPickup();
-  } else {
-    commandBus.useOriginalDelivery();
-  }
-  // Update local state from facade
-  const snap = editorFacade.snapshot().editor;
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
-
-  editorFacade.refreshRoute();
-  refreshRouteInfo();
-  toast.info(`Original ${side} address restored.`, 2000);
-}
-
-async function handleSave(side) {
-  state.saveLoading = true;
-  let result;
-
-  try {
-    if (side === 'pickup') {
-      toast.info("Saving pickup and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('pickup', applyToSimilar.value);
-    } else if (side === 'delivery') {
-      toast.info("Saving delivery and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('delivery', applyToSimilar.value);
-    } else {
-      toast.info("Saving both and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('both', applyToSimilar.value);
-    }
-
-    if (result.ok) {
-      if (result.value.nextOrderId) {
-        toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
-        // Reload data for the new ID
-        orderId.value = result.value.nextOrderId;
-        await loadOrderData();
-      } else {
-        toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
-      }
-    } else {
-      throw result.error;
-    }
-  } catch (e) {
-    log.error(`Save flow failed for side '${side}':`, e);
-    toast.error(`Save failed: ${e.message}`, 10000);
+    const { data } = await apiClient.post('/api/suggest/address', query);
+    suggestions.value = Array.isArray(data) ? data : [];
   } finally {
-    state.saveLoading = false;
+    isLoadingSuggestions.value = false;
   }
+};
+
+const getDynamicSuggestionsByName = async () => {
+  if (!placeSearchQuery.value?.trim()) return;
+  isLoadingSuggestions.value = true;
+  try {
+    const { data } = await apiClient.get('/api/suggest/name', { params: { q: placeSearchQuery.value } });
+    suggestions.value = Array.isArray(data) ? data : [];
+  } finally {
+    isLoadingSuggestions.value = false;
+  }
+};
+
+const debouncedNameSearch = () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(getDynamicSuggestionsByName, 600);
+};
+
+const selectDynamicSuggestion = (s) => {
+  Object.assign(editable, {
+    ...editable,                            // ✅ valid spread
+    street: s.street || '',
+    houseNo: s.houseNumber || '',
+    postalCode: s.postalCode || '',
+    city: s.city || '',
+  });
+  placeSearchQuery.value = s.fullAddressLabel || '';
+  suggestions.value = [];
+};
+
+/* ------------------------------ Map/Geocode ------------------------------- */
+const handleGeocode = (coords) => {
+  editable.latitude = String(coords.lat ?? '');
+  editable.longitude = String(coords.lng ?? '');
+};
+
+const geocodeCurrent = async () => {
+  busy.value = true;
+  try {
+    const { data } = await apiClient.post('/api/geocode', {
+      street: editable.street, houseNo: editable.houseNo,
+      postalCode: editable.postalCode, city: editable.city, country: editable.country
+    });
+    if (data?.lat && data?.lng) {
+      editable.latitude = String(data.lat);
+      editable.longitude = String(data.lng);
+    }
+  } finally {
+    busy.value = false;
+  }
+};
+
+/* ----------------------------- Verify via Job ----------------------------- */
+const modal = reactive({ open:false, status:'IDLE', jobId:null, suggestions:[], selected:null, error:'', busy:false });
+
+const verifyViaJob = async () => {
+  modal.open = true;
+  modal.status = 'PENDING';
+  modal.error = '';
+  try {
+    const { data } = await apiClient.post(`/api/address-verification/start/${orderId}`);
+    modal.jobId = data?.verificationJobId;
+    await pollJob();
+  } catch {
+    modal.error = 'Nie udało się rozpocząć procesu weryfikacji.';
+    modal.status = 'FAILED';
+  }
+};
+
+async function pollJob() {
+  let attempts = 0;
+  const maxAttempts = 20;
+  while (attempts++ < maxAttempts) {
+    await new Promise(r => setTimeout(r, 1500));
+    const { data } = await apiClient.get(`/api/address-verification/status/${modal.jobId}`);
+    if (!data?.status) continue;
+    if (data.status === 'COMPLETED') {
+      modal.status = 'COMPLETED';
+      modal.suggestions = data.suggestions || [];
+      return;
+    }
+    if (data.status === 'FAILED') {
+      modal.status = 'FAILED';
+      modal.error = 'Weryfikacja nie powiodła się.';
+      return;
+    }
+  }
+  modal.status = 'FAILED';
+  modal.error = 'Przekroczono limit oczekiwania.';
 }
 
-// Basic logger shim
-const log = {
-  info: (...args) => console.info(...args),
-  warn: (...args) => console.warn(...args),
-  error: (...args) => console.error(...args),
+const submitCorrection = async () => {
+  if (!modal.selected) return;
+  modal.busy = true;
+  try {
+    await apiClient.post(`/api/orders/${orderId}/address`, {
+      ...editable,
+      street: modal.selected.street || editable.street,
+      houseNo: modal.selected.houseNumber || editable.houseNo,
+      postalCode: modal.selected.postalCode || editable.postalCode,
+      city: modal.selected.city || editable.city
+    });
+    modal.open = false;
+  } finally {
+    modal.busy = false;
+  }
+};
+
+const closeModal = () => { modal.open = false; };
+
+/* -------------------------------- Actions -------------------------------- */
+const saveAll = async () => {
+  busy.value = true;
+  try {
+    await apiClient.post(`/api/orders/${orderId}/address`, { ...editable });
+  } finally {
+    busy.value = false;
+  }
+};
+
+const useOriginal = async () => {
+  // Reload from backend saved/original
+  const { data } = await apiClient.get(`/api/orders/${orderId}/original-address`);
+  Object.assign(editable, data || {});
 };
 </script>
+
+<style scoped>
+.input {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none transition text-sm;
+}
+.input:focus { box-shadow: 0 0 0 3px rgba(30,78,140,.25); border-color: #1e4e8c; }
+</style>
+
 
 ================================================================================
 ### PLIK: views/DashboardView.vue
@@ -9807,61 +10089,72 @@ const formatTimestamp = (ts) => {
 ### PLIK: views/LoginView.vue
 ================================================================================
 
-<!--
-ARCHITECTURE: LoginView authenticates via AuthController and redirects to the intended route.
-It follows the manifesto by delegating auth logic to the controller and keeping UI declarative.
-Responsibilities:
-- Collect credentials, call auth.login(), then navigate to ?r=... or /dashboard.
--->
 <template>
-  <section class="login">
-    <header><h1>Sign in</h1></header>
-    <form @submit.prevent="onSubmit">
-      <label>Username <input v-model="username" autocomplete="username" /></label>
-      <label>Password <input v-model="password" type="password" autocomplete="current-password" /></label>
-      <button :disabled="busy" type="submit">{{ busy ? 'Signing in…' : 'Sign in' }}</button>
-      <p v-if="err" class="err">{{ err }}</p>
-    </form>
-  </section>
+  <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8 bg-gray-50">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+      <h2 class="text-center text-3xl font-extrabold text-blue-700 tracking-tight">
+        DANXILS Triage Workbench
+      </h2>
+      <p class="mt-2 text-center text-sm text-gray-600">Sign in to your account</p>
+    </div>
+
+    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
+      <div class="bg-white px-6 py-12 shadow-2xl rounded-xl ring-1 ring-gray-100">
+        <form class="space-y-6" @submit.prevent="handleLogin">
+          <div>
+            <label for="username" class="block text-sm font-medium leading-6 text-gray-900">Username</label>
+            <div class="mt-2">
+              <input
+                  id="username" name="username" type="text" required v-model="credentials.username"
+                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
+                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium leading-6 text-gray-900">Password</label>
+            <div class="mt-2">
+              <input
+                  id="password" name="password" type="password" required v-model="credentials.password"
+                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
+                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
+              />
+            </div>
+          </div>
+
+          <button
+              type="submit"
+              class="w-full flex justify-center py-2.5 px-4 rounded-xl font-medium text-white bg-blue-600 hover:bg-blue-700 transition"
+          >
+            Sign in
+          </button>
+
+          <p v-if="errorMessage" class="text-red-600 text-sm">{{ errorMessage }}</p>
+        </form>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { inject, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { reactive, ref } from 'vue';
+import apiClient from '@/services/Api.js';
 
-const auth = inject("auth"); // provided in main.js
-const route = useRoute();
-const router = useRouter();
+const credentials = reactive({ username: '', password: '' });
+const errorMessage = ref('');
 
-const username = ref("admin");
-const password = ref("pass");
-const busy = ref(false);
-const err = ref("");
-
-async function onSubmit() {
-  err.value = "";
-  busy.value = true;
+const handleLogin = async () => {
+  errorMessage.value = '';
   try {
-    const r = await auth.login(username.value, password.value);
-    if (!r.ok) throw r.error || new Error("Login failed");
-    const go = String(route.query.r || "/dashboard");
-    router.push(go);
+    await apiClient.post('/api/auth/login', credentials);
+    // Router guard should redirect after auth binds token
+    window.location.assign('/worklist');
   } catch (e) {
-    err.value = e?.message || "Login failed";
-  } finally {
-    busy.value = false;
+    errorMessage.value = 'Login failed';
   }
-}
+};
 </script>
-
-<style scoped>
-.login { max-width: 420px; margin: 8vh auto; padding: 16px; border: 1px solid #eee; border-radius: 8px; background: #fff; display: grid; gap: 12px; }
-form { display: grid; gap: 10px; }
-label { display: grid; gap: 4px; font-size: 12px; }
-input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-button { padding: 8px 10px; font-size: 14px; }
-.err { color: #c0392b; margin: 0; }
-</style>
 
 
 ================================================================================
@@ -9869,187 +10162,120 @@ button { padding: 8px 10px; font-size: 14px; }
 ================================================================================
 
 <template>
-  <div class="p-4 sm:p-6 lg:p-8">
-    <PageHeader title="Aggregated System Logs" subtitle="View logs from all connected services." />
+  <div class="log-dashboard bg-white">
+    <h1 class="text-xl font-semibold text-slate-900 mb-4">System Logs</h1>
 
-    <div class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <FormInput id="filter-query" label="Search Query" v-model="filters.query" @keyup.enter="applyFilters" />
-        <FormInput id="filter-correlationId" label="Correlation ID" v-model="filters.correlationId" @keyup.enter="applyFilters" />
-        <FormInput id="filter-appName" label="App Name" v-model="filters.appName" @keyup.enter="applyFilters" />
-        <FormInput id="filter-level" label="Level (e.g., WARN)" v-model="filters.level" @keyup.enter="applyFilters" />
-      </div>
-      <div class="mt-4 flex justify-end">
-        <button
-            @click="applyFilters"
-            class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-        >
-          Search
-        </button>
-      </div>
+    <!-- Filters -->
+    <div class="filters">
+      <input type="text" placeholder="Search message…" v-model="logStore.filters.query" @keyup.enter="applyFilters" />
+      <select v-model="logStore.filters.level">
+        <option value="">All Levels</option>
+        <option value="ERROR">ERROR</option>
+        <option value="WARN">WARN</option>
+        <option value="INFO">INFO</option>
+        <option value="DEBUG">DEBUG</option>
+      </select>
+      <input type="datetime-local" v-model="logStore.filters.from" />
+      <input type="datetime-local" v-model="logStore.filters.to" />
+      <button @click="applyFilters" :disabled="logStore.loading">Apply</button>
     </div>
 
-    <div v-if="loading" class="mt-8 text-center">
-      <p>Loading logs...</p>
-    </div>
-    <div v-if="error" class="mt-8 text-center text-red-500">
-      <p>Failed to load logs: {{ error }}</p>
-    </div>
+    <div v-if="logStore.loading" class="loading">Loading…</div>
+    <div v-else-if="logStore.error" class="error-message">{{ logStore.error }}</div>
+    <div v-else-if="!logStore.entries.length" class="no-results">No results.</div>
 
-    <div v-if="!loading && pageData" class="mt-8 flow-root">
-      <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-        <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-          <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-            <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
-              <thead class="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 sm:pl-6">Time</th>
-                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100">App</th>
-                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100">Lvl</th>
-                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100">Message</th>
-                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-100">Correlation ID</th>
-              </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
-              <tr v-if="pageData.empty">
-                <td colspan="5" class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">No logs found matching your criteria.</td>
-              </tr>
-              <tr v-for="(log, index) in pageData.content" :key="index" class="hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-mono text-gray-500 sm:pl-6">{{ formatTimestamp(log['@timestamp']) }}</td>
-                <td class="whitespace-nowrap px-3 py-4 text-sm">
-                    <span
-                        class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset"
-                        :class_name="getAppColor(log.app_name)"
-                    >
-                      {{ log.app_name || 'unknown' }}
-                    </span>
-                </td>
-                <td class="whitespace-nowrap px-3 py-4 text-sm">
-                  <span :class_name="getLevelColor(log.level)">{{ log.level }}</span>
-                </td>
-                <td class="px-3 py-4 text-sm text-gray-800 dark:text-gray-200" style="word-break: break-word; max-width: 600px;">{{ log.message }}</td>
-                <td class="whitespace-nowrap px-3 py-4 text-sm font-mono text-gray-500">{{ log.correlationId }}</td>
-              </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+    <!-- Table -->
+    <div v-else class="log-entries">
+      <table>
+        <thead>
+        <tr>
+          <th style="width: 12rem;">Timestamp</th>
+          <th style="width: 5rem;">Level</th>
+          <th>Logger</th>
+          <th>Message</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr v-for="(e, idx) in logStore.entries" :key="idx" :class="rowClass(e)">
+          <td>{{ formatTimestamp(e.timestamp) }}</td>
+          <td>{{ e.level }}</td>
+          <td>{{ e.logger || '-' }}</td>
+          <td class="message">{{ e.message }}</td>
+        </tr>
+        </tbody>
+      </table>
+
+      <!-- Pager -->
+      <div class="pagination">
+        <button @click="prevPage" :disabled="logStore.currentPage === 0 || logStore.loading">Previous</button>
+        <span>Page {{ logStore.currentPage + 1 }} of {{ logStore.totalPages }}</span>
+        <button @click="nextPage" :disabled="logStore.currentPage >= logStore.totalPages - 1 || logStore.loading">Next</button>
       </div>
-
-      <Pagination
-          v-if="!pageData.empty"
-          :current-page="pageData.number + 1"
-          :total-pages="pageData.totalPages"
-          :total-items="pageData.totalElements"
-          :per-page="pageData.size"
-          @page-changed="goToPage"
-      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { LogService } from '@/services/LogService.js';
-import PageHeader from '@/components/PageHeader.vue';
-import FormInput from '@/components/FormInput.vue';
-import Pagination from '@/components/Pagination.vue';
-import { format, parseISO } from 'date-fns';
+import { onMounted } from 'vue';
+import { useLogStore } from '@/stores/useLogStore';
 
-const logService = new LogService();
-const route = useRoute();
-const router = useRouter();
+const logStore = useLogStore();
 
-const loading = ref(true);
-const error = ref(null);
-const pageData = ref(null);
-
-const filters = reactive({
-  query: route.query.query || '',
-  correlationId: route.query.correlationId || '',
-  appName: route.query.appName || '',
-  level: route.query.level || '',
+onMounted(() => {
+  logStore.fetchLogs();
 });
 
-const pageable = reactive({
-  page: route.query.page ? parseInt(route.query.page, 10) - 1 : 0,
-  size: 50,
-  sort: '@timestamp,desc',
-});
+const applyFilters = () => {
+  logStore.applyFiltersAndFetch();
+};
 
-async function fetchLogs() {
-  loading.value = true;
-  error.value = null;
+const prevPage = () => {
+  logStore.setPage(logStore.currentPage - 1);
+};
 
-  // Combine query params
-  const queryParams = {
-    ...pageable,
-    ...filters,
-    page: pageable.page, // Ensure page 0-indexing for API
-  };
+const nextPage = () => {
+  logStore.setPage(logStore.currentPage + 1);
+};
 
-  // Update URL
-  router.push({ query: { ...route.query, ...filters, page: pageable.page + 1 } });
-
-  const result = await logService.queryLogs(filters, pageable);
-
-  if (result.ok) {
-    pageData.value = result.value;
-  } else {
-    error.value = result.error.message;
-  }
-  loading.value = false;
-}
-
-function applyFilters() {
-  pageable.page = 0; // Reset to first page
-  fetchLogs();
-}
-
-function goToPage(page) {
-  pageable.page = page - 1; // Convert 1-based to 0-based
-  fetchLogs();
-}
-
-onMounted(fetchLogs);
-
-// --- Formatting Helpers ---
-function formatTimestamp(ts) {
-  if (!ts) return 'N/A';
+const formatTimestamp = (ts) => {
+  if (!ts) return '-';
   try {
-    return format(parseISO(ts), 'yyyy-MM-dd HH:mm:ss');
-  } catch (e) {
+    const date = new Date(isNaN(ts) ? ts : Number(ts));
+    return date.toLocaleString();
+  } catch {
     return ts;
   }
-}
+};
 
-function getLevelColor(level) {
-  switch (level?.toUpperCase()) {
-    case 'ERROR':
-      return 'text-red-500 font-bold';
-    case 'WARN':
-      return 'text-yellow-500 font-bold';
-    case 'INFO':
-      return 'text-blue-500';
-    default:
-      return 'text-gray-500';
-  }
-}
-
-function getAppColor(appName) {
-  switch (appName) {
-    case 'danxils-api':
-      return 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 ring-blue-600/20';
-    case 'tes':
-      return 'bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-200 ring-green-600/20';
-    case 'frontend':
-      return 'bg-purple-50 dark:bg-purple-900 text-purple-700 dark:text-purple-200 ring-purple-600/20';
-    default:
-      return 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-200 ring-gray-500/10';
-  }
-}
+const rowClass = (e) => ({
+  'level-error': e.level === 'ERROR',
+  'level-warn': e.level === 'WARN',
+});
 </script>
+
+<style scoped>
+.log-dashboard { padding: 20px; }
+.filters { margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+.filters input, .filters select { padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+.filters button { padding: 8px 15px; cursor: pointer; border-radius: 10px; background: #facc15; border: 1px solid #eab308; color: #0b1220; }
+
+.loading, .error-message, .no-results { margin-top: 20px; padding: 15px; border-radius: 8px; }
+.loading { background-color: #e0e0e0; }
+.error-message { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.no-results { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+
+.log-entries table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9em; }
+.log-entries th, .log-entries td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+.log-entries th { background-color: #f2f2f2; }
+.log-entries td.message { white-space: pre-wrap; word-break: break-word; }
+
+.level-error { background-color: #fef2f2; }
+.level-warn { background-color: #fffbeb; }
+
+.pagination { margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 15px; }
+.pagination button { padding: 6px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: white; }
+</style>
+
 
 ================================================================================
 ### PLIK: views/NotFoundView.vue
@@ -10609,6 +10835,193 @@ const handleDelete = async (ruleId) => {
 </template>
 
 ================================================================================
+### PLIK: views/ShowcasePro.vue
+================================================================================
+
+<template>
+  <div class="min-h-screen">
+    <Navbar/>
+    <div class="mx-auto max-w-7xl px-4 py-8 lg:pl-72">
+      <Sidebar class="hidden lg:block" />
+      <section class="card p-8 mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold leading-tight">
+          The <span class="text-grad">Yellow–Blue</span> Interface System
+        </h1>
+        <p class="mt-2 text-slate-600">A polished, friendly, and fast UI built on a white canvas with vibrant blue + yellow highlights.</p>
+        <div class="mt-5 flex gap-3">
+          <Button>Get Started</Button>
+          <Button variant="accent" @click="open = true">Open Modal</Button>
+        </div>
+      </section>
+
+      <section class="grid gap-5 md:grid-cols-3 mb-8">
+        <KpiTile icon="⏳" label="Pending" :value="kpi.pendingText()" />
+        <KpiTile icon="✅" label="Clearance" :value="kpi.clearanceText()" />
+        <KpiTile icon="🕒" label="Avg. Resolve" :value="kpi.avgResolutionText()" />
+      </section>
+
+      <section class="grid gap-5 md:grid-cols-3 mb-8">
+        <Card title="Buttons">
+          <div class="flex flex-wrap gap-3">
+            <Button>Primary</Button>
+            <Button variant="accent">Accent</Button>
+            <Button variant="ghost">Ghost</Button>
+            <Button size="lg">Large</Button>
+            <Button size="sm">Small</Button>
+          </div>
+        </Card>
+
+        <Card title="Form Inputs">
+          <div class="space-y-3">
+            <Input v-model="form.name" label="Name" hint="Your display name" placeholder="Jane Doe" />
+            <Select v-model="form.city" label="City">
+              <option value="Warsaw">Warsaw</option>
+              <option value="Kraków">Kraków</option>
+              <option value="Gdańsk">Gdańsk</option>
+            </Select>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-600">Email Notifications</span>
+              <Toggle v-model="form.notify" />
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Progress & Tabs">
+          <div class="space-y-4">
+            <div class="progress"><div class="progress-inner" :style="{ width: progress.percent + '%' }"></div></div>
+            <div class="text-sm text-slate-600">{{ progress.percent }}% complete</div>
+            <Tabs v-model="activeTab" :tabs="['Overview','Details','History']">
+              <template #default="{ active }">
+                <div class="text-sm text-slate-700" v-if="active==='Overview'">Fast overview of the latest actions.</div>
+                <div class="text-sm text-slate-700" v-else-if="active==='Details'">Dive into the nitty gritty details.</div>
+                <div class="text-sm text-slate-700" v-else>All system events are logged here.</div>
+              </template>
+            </Tabs>
+          </div>
+        </Card>
+      </section>
+
+      <section class="mb-8">
+        <Card title="Statuses">
+          <div class="flex flex-wrap gap-2">
+            <Badge v-for="s in statusKeys" :key="s" :tone="toneFor(s)">{{ labelFor(s) }}</Badge>
+          </div>
+        </Card>
+      </section>
+
+      <section class="mb-12">
+        <Card title="Worklist (Sortable)">
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th><button class="underline" @click="sortBy('id')">Order</button></th>
+                  <th><button class="underline" @click="sortBy('city')">City</button></th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in sortedRows" :key="row.id">
+                  <td class="font-medium text-slate-900">{{ row.id.slice(0,8) }}</td>
+                  <td>{{ row.city }}</td>
+                  <td><Badge :tone="toneFor(row.status)">{{ labelFor(row.status) }}</Badge></td>
+                  <td>
+                    <div class="flex gap-2">
+                      <Button size="sm">Open</Button>
+                      <Button size="sm" variant="ghost">Approve</Button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </section>
+
+      <Modal :open="open" title="Quick Action" @close="open=false">
+        <p class="text-slate-700">This modal follows the yellow–blue theme with a soft glass card.</p>
+        <template #footer>
+          <Button variant="ghost" @click="open=false">Cancel</Button>
+          <Button @click="open=false">Confirm</Button>
+        </template>
+      </Modal>
+
+      <section class="card p-8 mb-24 flex items-center justify-between flex-col sm:flex-row gap-5">
+        <div>
+          <h3 class="text-xl font-semibold">Want this theme everywhere?</h3>
+          <p class="text-slate-600">Apply tokens + components across routes for instant cohesion.</p>
+        </div>
+        <div class="flex gap-3">
+          <Button>Apply Theme</Button>
+          <Button variant="accent" @click="toast('Saved!', 'success')">Toast</Button>
+        </div>
+      </section>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import Navbar from '@/components/layout/Navbar.vue'
+import Sidebar from '@/components/layout/Sidebar.vue'
+
+import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Card from '@/components/ui/Card.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
+import Toggle from '@/components/ui/Toggle.vue'
+import Tabs from '@/components/ui/Tabs.vue'
+import Modal from '@/components/ui/Modal.vue'
+import KpiTile from '@/components/ui/KpiTile.vue'
+
+import { KpiViewModel } from '@/viewmodels/KpiViewModel'
+import { VerificationProgressViewModel } from '@/viewmodels/VerificationProgressViewModel'
+import { StatusBadgeViewModel } from '@/viewmodels/StatusBadgeViewModel'
+import { useToast } from '@/composables/useToast'
+
+const { success, info, error } = useToast()
+const toast = (msg, type='success') => ({ success:()=>success(msg), info:()=>info(msg), error:()=>error(msg) }[type]())
+
+const kpi = new KpiViewModel({ pending: 42, clearancePercent: 87.2, avgMinutes: 96 })
+const progressVM = new VerificationProgressViewModel()
+const progress = progressVM.snapshot()
+const statusKeys = Object.keys(new StatusBadgeViewModel('INGESTED').map)
+const labelFor = (code) => new StatusBadgeViewModel(code).toObject().label
+const toneFor = (code) => ({
+  success:'success', warning:'warning', danger:'danger', info:'info', neutral:'neutral'
+})[new StatusBadgeViewModel(code).toObject().tone] || 'neutral'
+
+import { reactive, ref, computed } from 'vue'
+const form = reactive({ name:'', city:'Warsaw', notify:true })
+const activeTab = ref('Overview')
+const open = ref(false)
+
+const rows = ref([
+  { id: 'a1b2c3d4-1', city: 'Warsaw', status: 'PENDING_VERIFICATION' },
+  { id: 'a1b2c3d4-2', city: 'Kraków', status: 'HAPPY_PATH_MATCHED' },
+  { id: 'a1b2c3d4-3', city: 'Gdańsk', status: 'FAILED' },
+])
+const sortKey = ref('id')
+const asc = ref(true)
+const sortBy = (k) => {
+  if (sortKey.value === k) asc.value = !asc.value
+  else { sortKey.value = k; asc.value = true }
+}
+const sortedRows = computed(() =>
+  [...rows.value].sort((a,b)=>{
+    const x = (''+a[sortKey.value]).localeCompare((''+b[sortKey.value]), 'pl', { numeric:true, sensitivity:'base' })
+    return asc.value ? x : -x
+  })
+)
+</script>
+
+<style scoped>
+section + section { margin-top: 1.25rem; }
+</style>
+
+
+================================================================================
 ### PLIK: views/StatusExportView.vue
 ================================================================================
 
@@ -10767,6 +11180,173 @@ onMounted(() => {
   fetchFiles();
 });
 </script>
+
+================================================================================
+### PLIK: views/StyleShowcase.vue
+================================================================================
+
+<template>
+  <div class="min-h-screen">
+    <!-- Hero -->
+    <section class="rounded-3xl p-6 sm:p-10 bg-white border border-slate-200 mb-8">
+      <div class="flex flex-col md:flex-row items-start md:items-center gap-6 justify-between">
+        <div class="max-w-2xl">
+          <h1 class="text-3xl md:text-4xl font-bold leading-tight text-slate-900">
+            Yellow & Blue Design Kit
+          </h1>
+          <p class="mt-2 text-slate-600">
+            A modern, friendly interface kit for your app—buttons, badges, KPIs, progress, tables and more.
+          </p>
+        </div>
+        <div class="rounded-2xl px-5 py-3 text-slate-900 bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-primary)] shadow text-sm">
+          White background • Theme: Yellow + Blue
+        </div>
+      </div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="grid gap-5 md:grid-cols-3 mb-8">
+      <KpiTile icon="⏳" label="Pending" :value="kpi.pendingText()" />
+      <KpiTile icon="✅" label="Clearance" :value="kpi.clearanceText()" />
+      <KpiTile icon="🕒" label="Avg. Resolve" :value="kpi.avgResolutionText()" />
+    </section>
+
+    <!-- Actions -->
+    <section class="grid gap-5 md:grid-cols-3 mb-8">
+      <Card title="Buttons">
+        <div class="flex flex-wrap gap-3">
+          <Button>Primary</Button>
+          <Button variant="accent">Accent</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button size="lg">Large</Button>
+          <Button size="sm">Small</Button>
+        </div>
+      </Card>
+
+      <Card title="Progress">
+        <div class="space-y-4">
+          <ProgressBar :value="progress.percent" />
+          <div class="text-sm text-slate-600">{{ progress.percent }}% complete</div>
+          <div class="flex gap-2 flex-wrap">
+            <Button variant="ghost" v-for="s in stepOrder" :key="s" @click="toggleStep(s)">{{ s }}</Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Toasts & Banners">
+        <div class="space-y-3">
+          <Button @click="notify('Saved successfully','success')">Success</Button>
+          <Button variant="accent" @click="notify('Heads up, check details','info')">Info</Button>
+          <Button variant="ghost" @click="notify('Something went wrong','error')">Error</Button>
+          <p class="text-xs text-slate-500">Uses your <code>vue-toastification</code> setup.</p>
+        </div>
+      </Card>
+    </section>
+
+    <!-- Status Badges -->
+    <section class="mb-8">
+      <Card title="Statuses">
+        <div class="flex flex-wrap gap-2">
+          <Badge v-for="s in statusKeys" :key="s" :tone="toneFor(s)">{{ labelFor(s) }}</Badge>
+        </div>
+      </Card>
+    </section>
+
+    <!-- Table demo -->
+    <section class="mb-12">
+      <Card title="Worklist (Sample)">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b">
+                <th class="py-2 pr-4">Order</th>
+                <th class="py-2 pr-4">City</th>
+                <th class="py-2 pr-4">Status</th>
+                <th class="py-2 pr-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in sampleRows" :key="row.id" class="border-b last:border-0">
+                <td class="py-3 pr-4 font-medium text-slate-900">{{ row.id.slice(0,8) }}</td>
+                <td class="py-3 pr-4">{{ row.city }}</td>
+                <td class="py-3 pr-4"><Badge :tone="toneFor(row.status)">{{ labelFor(row.status) }}</Badge></td>
+                <td class="py-3 pr-4">
+                  <div class="flex gap-2">
+                    <Button size="sm">Open</Button>
+                    <Button size="sm" variant="ghost">Approve</Button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </section>
+
+    <!-- CTA -->
+    <section class="card-glass p-8 mb-20 flex items-center justify-between flex-col sm:flex-row gap-5">
+      <div>
+        <h3 class="text-xl font-semibold text-slate-900">Like this vibe?</h3>
+        <p class="text-slate-600">Plug in the kit and your screens instantly feel intentional and premium.</p>
+      </div>
+      <div class="flex gap-3">
+        <Button>Apply Theme</Button>
+        <Button variant="accent">Docs</Button>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup>
+import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Card from '@/components/ui/Card.vue'
+import ProgressBar from '@/components/ui/ProgressBar.vue'
+import KpiTile from '@/components/ui/KpiTile.vue'
+
+import { KpiViewModel } from '@/viewmodels/KpiViewModel'
+import { VerificationProgressViewModel } from '@/viewmodels/VerificationProgressViewModel'
+import { StatusBadgeViewModel } from '@/viewmodels/StatusBadgeViewModel'
+import { useToast } from '@/composables/useToast'
+
+const { success, info, error } = useToast()
+const notify = (msg, type='success') => ({
+  success: () => success(msg),
+  info: () => info(msg),
+  error: () => error(msg)
+}[type]())
+
+const kpi = new KpiViewModel({ pending: 42, clearancePercent: 87.2, avgMinutes: 96 })
+const progressVM = new VerificationProgressViewModel()
+const stepOrder = progressVM.steps.map(s => s.key)
+const progress = progressVM.snapshot()
+const toggleStep = (key) => {
+  const done = !progressVM.steps.find(s => s.key === key)?.done
+  progressVM.mark(key, done)
+  Object.assign(progress, progressVM.snapshot())
+}
+
+// status badges
+const sb = new StatusBadgeViewModel('INGESTED')
+const statusKeys = Object.keys(sb.map)
+const labelFor = (code) => new StatusBadgeViewModel(code).toObject().label
+const toneFor = (code) => ({
+  success: 'success', warning: 'warning', danger: 'danger',
+  info: 'info', neutral: 'neutral'
+})[new StatusBadgeViewModel(code).toObject().tone] || 'neutral'
+
+// sample table data
+const sampleRows = [
+  { id: 'a1b2c3d4-1', city: 'Warsaw', status: 'PENDING_VERIFICATION' },
+  { id: 'a1b2c3d4-2', city: 'Kraków', status: 'HAPPY_PATH_MATCHED' },
+  { id: 'a1b2c3d4-3', city: 'Gdańsk', status: 'FAILED' },
+]
+</script>
+
+<style scoped>
+section + section { margin-top: 1.25rem; }
+</style>
+
 
 ================================================================================
 ### PLIK: views/TriageDashboard.vue
@@ -10935,69 +11515,74 @@ onUnmounted(() => {
 ================================================================================
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useWorklistStore } from "@/stores/WorklistStore.js";
-import { storeToRefs } from 'pinia';
-import { EditorNavigationController } from '@/controllers/EditorNavigationController';
+import {ref, computed, onMounted, watch} from 'vue';
+import {useRouter} from 'vue-router';
+import {useWorklistStore} from "@/stores/WorklistStore.js";
+import {storeToRefs} from 'pinia';
+import {EditorNavigationController} from '@/controllers/EditorNavigationController';
 import StatusBadge from '@/components/common/StatusBadge.vue';
-
 
 const store = useWorklistStore();
 const router = useRouter();
 const nav = new EditorNavigationController();
 
 // Use storeToRefs to keep reactivity on store state
-const { items, pagination, loading, error, filter, selection } = storeToRefs(store);
+// --- FIX: 'filters' ref is now the domain object, 'selection' is the array ---
+const {items, pagination, loading, error, filters, selection} = storeToRefs(store);
 
 // localFilter is now a reactive copy for the v-model bindings
-const localFilter = ref({ ...filter.value.toPlainObject() });
+const localFilter = ref({...filters.value.toPlainObject()});
 
 // Watch for changes in the store's filter (e.g., after reset) and update local copy
-watch(filter, (newFilterState) => {
-  localFilter.value = { ...newFilterState.toPlainObject() };
-}, { deep: true });
+watch(filters, (newFilterState) => {
+  localFilter.value = {...newFilterState.toPlainObject()};
+}, {deep: true});
 
 // Fetch data when component mounts
 onMounted(async () => {
-  await store.loadWorklistPage();
+  // --- FIX: Call correct store method ---
+  await store.loadWorklist();
   // Ensure local filter is in sync with store after initial load
-  localFilter.value = { ...store.filter.toPlainObject() };
+  localFilter.value = {...store.filters.toPlainObject()};
 });
 
-// *** MODIFIED: Renamed to handle explicit button click ***
 const handleApplyFilter = () => {
-  // Pass the local state object to the store action
-  store.applyFilterPatch(localFilter.value);
+  // --- FIX: Call correct store method ---
+  store.setFilters(localFilter.value);
 };
 
 const handleResetFilter = () => {
-  store.resetFilter(); // This will trigger the watcher to update localFilter.value
+  // --- FIX: Call correct store method ---
+  store.handleResetFilter(); // This will trigger the watcher to update localFilter.value
 };
 
 const goToEditor = (orderId) => {
-  // Optional: Pass current filter/page state for 'Back' button context
-  const navState = { filter: store.currentFilter, page: pagination.value.currentPage };
+  // --- FIX: Use correct property names ---
+  const navState = {filter: store.filters.toPlainObject(), page: pagination.value.page};
   router.push(nav.toEditor(orderId, 'worklist', navState));
 };
 
 // --- Selection Helpers ---
 const isAllSelectedOnPage = computed(() => {
   const pageIds = items.value.map(item => item.id);
+  // --- FIX: Use 'selection' ref ---
   return pageIds.length > 0 && pageIds.every(id => selection.value.includes(id));
 });
 
 const toggleSelectAll = () => {
   if (isAllSelectedOnPage.value) {
+    // --- FIX: Call correct store method ---
     store.clearSelection();
   } else {
+    // --- FIX: Call correct store method ---
     store.selectAllOnPage();
   }
 };
 
 // --- Pagination ---
 const handlePageChange = (newPage) => {
-  store.goToPage(newPage);
+  // --- FIX: Call correct store method ---
+  store.setPage(newPage);
 };
 
 // Formatting helper
@@ -11009,22 +11594,24 @@ const formatDate = (dateString) => {
     return dateString;
   }
 };
-
 </script>
 
 <template>
   <div class="worklist-view card">
 
     <div class="filter-controls">
-      <input type="text" v-model="localFilter.barcode" placeholder="Barcode..." />
-      <input type="text" v-model="localFilter.customerId" placeholder="Customer ID..." />
+      <input type="text" v-model="localFilter.barcode" placeholder="Barcode..."/>
+      <input type="text" v-model="localFilter.customerId" placeholder="Customer ID..."/>
       <select v-model="localFilter.status">
         <option value="">All Statuses</option>
-        <option value="ADDRESS_NEEDS_REVIEW">Needs Review</option>
-        <option value="ADDRESS_VALIDATED">Validated</option>
-        <option value="MANUALLY_CORRECTED">Corrected</option>
-        <option value="PENDING_ADDRESS_VALIDATION">Pending</option>
-        <option value="CDC_PROCESSED">CDC Processed</option>
+        <option value="PENDING_VERIFICATION">Pending Verification</option>
+        <option value="AWAITING_ALIAS_CHECK">Awaiting Alias Check</option>
+        <option value="HAPPY_PATH_MATCHED">Happy Path Matched</option>
+        <option value="APPROVED">Approved</option>
+        <option value="SENT_TO_TRACKIT">Sent to TrackIT</option>
+        <option value="ACK_TRACKIT">In TrackIT (Ack)</option>
+        <option value="CDC_EVENT">CDC Event</option>
+        <option value="INGESTED">Ingested</option>
         <option value="FAILED">Failed</option>
       </select>
       <input type="date" v-model="localFilter.dateFrom" title="Created Date From"/>
@@ -11039,13 +11626,13 @@ const formatDate = (dateString) => {
 
     <div v-if="!loading && !error" class="worklist-content">
       <div class="table-actions">
-        <span>Selected: {{ store.selectedCount }}</span>
+        <span>Selected: {{ selection.length }}</span>
       </div>
 
       <table class="worklist-table">
         <thead>
         <tr>
-          <th><input type="checkbox" :checked="isAllSelectedOnPage" @change="toggleSelectAll" /></th>
+          <th><input type="checkbox" :checked="isAllSelectedOnPage" @change="toggleSelectAll"/></th>
           <th>Barcode</th>
           <th>Customer ID</th>
           <th>Status</th>
@@ -11058,11 +11645,14 @@ const formatDate = (dateString) => {
         <tr v-if="items.length === 0">
           <td colspan="7">No orders found for the current filters.</td>
         </tr>
-        <tr v-for="item in items" :key="item.id" :class="{ 'selected-row': store.isSelected(item.id) }">
-          <td><input type="checkbox" :checked="store.isSelected(item.id)" @change="store.toggleSelection(item.id)" /></td>
+        <tr v-for="item in items" :key="item.id" :class="{ 'selected-row': selection.includes(item.id) }">
+          <td><input type="checkbox" :checked="selection.includes(item.id)" @change="store.toggleSelection(item.id)"/>
+          </td>
           <td>{{ item.barcode }}</td>
           <td>{{ item.customerId }}</td>
-          <td><StatusBadge :status="item.processingStatus" /></td>
+          <td>
+            <StatusBadge :status="item.processingStatus"/>
+          </td>
           <td>{{ formatDate(item.createdAt) }}</td>
           <td>{{ formatDate(item.updatedAt) }}</td>
           <td>
@@ -11073,9 +11663,11 @@ const formatDate = (dateString) => {
       </table>
 
       <div class="pagination-controls" v-if="pagination.totalPages > 1">
-        <button @click="handlePageChange(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1">Previous</button>
-        <span>Page {{ pagination.currentPage }} of {{ pagination.totalPages }} ({{ pagination.totalItems }} items)</span>
-        <button @click="handlePageChange(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.totalPages">Next</button>
+        <button @click="handlePageChange(pagination.page - 1)" :disabled="pagination.page <= 1">Previous</button>
+        <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ({{ pagination.totalElements }} items)</span>
+        <button @click="handlePageChange(pagination.page + 1)" :disabled="pagination.page >= pagination.totalPages">
+          Next
+        </button>
       </div>
     </div>
   </div>
@@ -11103,6 +11695,7 @@ const formatDate = (dateString) => {
   flex-grow: 1; /* Allow inputs to grow */
   min-width: 150px; /* Minimum width for inputs */
 }
+
 .filter-controls input[type="date"] {
   flex-grow: 0; /* Don't let date inputs grow too much */
 }
@@ -11116,8 +11709,15 @@ const formatDate = (dateString) => {
   margin-bottom: calc(var(--spacing-unit) * 2);
   border-radius: 4px;
 }
-.loading-indicator { background-color: #f0f0f0; }
-.error-message { background-color: var(--color-danger); color: white; }
+
+.loading-indicator {
+  background-color: #f0f0f0;
+}
+
+.error-message {
+  background-color: var(--color-danger);
+  color: white;
+}
 
 .worklist-content {
   /* Styles for table and actions */
@@ -11158,14 +11758,17 @@ const formatDate = (dateString) => {
   gap: var(--spacing-unit);
   margin-top: calc(var(--spacing-unit) * 2);
 }
+
 .pagination-controls button {
-  padding: calc(var(--spacing-unit)*0.5) var(--spacing-unit);
+  padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
   cursor: pointer;
 }
+
 .pagination-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
 .pagination-controls span {
   color: var(--color-text-light);
 }
@@ -11820,37 +12423,75 @@ body { background:#fff; color:#111; }
 ### PLIK: assets/theme.css
 ================================================================================
 
-/*
-// ============================================================================
-// Frontend: Add theme.css
-// FILE: src/assets/theme.css (NEW FILE)
-// REASON: This is the main CSS entry point that imports all of
-//         Tailwind's styles. It was missing.
-// ============================================================================
-*/
-
-/* Import Tailwind's base styles (resets) */
-@tailwind base;
-
-/* Import Tailwind's component classes */
-@tailwind components;
-
-/* Import Tailwind's utility classes */
-@tailwind utilities;
-
-/* You can add custom global styles or component layers here */
-@layer base {
-    :root {
-        --color-primary: #007bff; /* Example: A blue primary color */
-        --color-secondary: #6c757d; /* Example: A gray secondary color */
-    }
-
-    body {
-        @apply bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
+:root {
+  --bg: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --primary: #1e4e8c;  /* deep blue */
+  --primary-600: #153e75;
+  --accent: #ffd400;   /* yellow */
+  --accent-600: #ffbf00;
+  --ring: rgba(30,78,140,.25);
+  --card: rgba(255,255,255,.72);
+  --border: rgba(2,6,23,.08);
+  --shadow-1: 0 1px 2px rgba(2,6,23,.06);
+  --shadow-2: 0 12px 32px rgba(2,6,23,.10);
+  --radius: 1.2rem;
 }
+
+html, body { background: var(--bg); color: var(--text); }
+
+.bg-brand { background-image: linear-gradient(135deg, var(--accent), var(--primary)); }
+.text-grad { background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; color: transparent; }
+
+.card {
+  background: var(--card);
+  backdrop-filter: saturate(180%) blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+.focus-ring { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+.btn { @apply inline-flex items-center justify-center font-medium transition px-4 py-2 rounded-xl select-none; }
+.btn-primary { @apply text-white; background: linear-gradient(180deg, var(--primary), var(--primary-600)); box-shadow: 0 8px 18px rgba(21,62,117,.28); }
+.btn-accent  { color:#0b1220; background: linear-gradient(180deg, var(--accent), var(--accent-600)); box-shadow: 0 8px 18px rgba(255,191,0,.35); }
+.btn-ghost   { @apply bg-white border border-slate-200 text-slate-800; }
+.btn:hover { filter: brightness(1.05); }
+.btn:active { transform: translateY(1px); }
+
+.badge { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold border; }
+.badge-success { @apply text-green-700 bg-green-50 border-green-200; }
+.badge-warning { @apply text-amber-800 bg-amber-50 border-amber-200; }
+.badge-danger  { @apply text-rose-700 bg-rose-50 border-rose-200; }
+.badge-info    { @apply text-sky-700 bg-sky-50 border-sky-200; }
+.badge-neutral { @apply text-slate-700 bg-slate-50 border-slate-200; }
+
+.input {
+  @apply w-full rounded-xl border bg-white px-3 py-2 outline-none transition text-sm;
+  border-color: #e2e8f0;
+}
+.input:focus { box-shadow: 0 0 0 3px var(--ring); border-color: var(--primary); }
+.select { @apply input; }
+.toggle { @apply relative inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition; }
+.toggle-dot { @apply h-5 w-5 transform rounded-full bg-white shadow transition; left: 2px; }
+.toggle-on { background: linear-gradient(135deg, var(--accent), var(--primary)); }
+.toggle-on .toggle-dot { transform: translateX(20px); }
+.tab { @apply px-3 py-2 text-sm rounded-lg border; border-color: #e2e8f0; }
+.tab-active { @apply border-transparent; background: linear-gradient(135deg, #fff, #fff) padding-box, linear-gradient(135deg, var(--accent), var(--primary)) border-box; border: 2px solid transparent; }
+.progress { @apply w-full h-3 rounded-full bg-slate-100 overflow-hidden; }
+.progress-inner { @apply h-3 transition-all; background: linear-gradient(135deg, var(--accent), var(--primary)); }
+.kpi { @apply flex items-center gap-4 p-5 rounded-2xl border; border-color: #e2e8f0; background: #fff; }
+.kpi-icon { @apply w-11 h-11 rounded-2xl text-white flex items-center justify-center font-bold; background: linear-gradient(135deg, var(--accent), var(--primary)); box-shadow: 0 10px 22px rgba(17,26,54,.18); }
+.table { @apply min-w-full text-sm; }
+.table th { @apply text-left text-slate-500 border-b py-2 pr-4; }
+.table td { @apply border-b py-3 pr-4; }
+.sidebar { @apply fixed inset-y-0 left-0 w-64 p-4; background: #ffffff; border-right: 1px solid #e2e8f0; }
+.navbar { @apply sticky top-0 z-50; background: #ffffffcc; backdrop-filter: blur(10px); border-bottom: 1px solid #e2e8f0; }
+.modal-backdrop { @apply fixed inset-0 bg-black/40 flex items-center justify-center p-6; }
+.modal { @apply card p-6 max-w-lg w-full; }
+
 
 ================================================================================
 ### PLIK: domain/BulkEditPlan.js
@@ -13730,16 +14371,20 @@ export class LoadingBarrier {
 ================================================================================
 
 // ============================================================================
-// Frontend: Update LogService.js
+// Frontend: Update LogService.js (Supersedes previous version)
 // FILE: src/services/LogService.js
-// REASON: FIX: Corrected the import path for the 'Api' base class.
+// REASON: FIX: Removed incorrect 'extends Api'.
+//         Import 'apiClient' (default export) instead of named 'Api'.
+//         Added constructor to set 'this.client'.
+//         Added 'normalizeError' helper method (stubbed).
 // ============================================================================
-import { Api } from '@/services/Api.js'; // *** THIS IS THE FIX ***
+import apiClient from '@/services/Api.js'; // *** THIS IS THE FIX ***
 import { Result } from '@/domain/Result';
 
-export class LogService extends Api {
+export class LogService { // *** REMOVED 'extends Api' ***
     constructor() {
-        super();
+        // *** ADDED CONSTRUCTOR ***
+        this.client = apiClient;
     }
 
     /**
@@ -13775,6 +14420,13 @@ export class LogService extends Api {
             return Result.fail(error);
         }
     }
+
+    // *** ADDED HELPER (Stubbed) ***
+    normalizeError(e, defaultMessage) {
+        const error = e.response?.data?.error || e.response?.data?.message || e.message || defaultMessage;
+        return new Error(error);
+    }
+    // *** END ADDED HELPER ***
 }
 
 ================================================================================
@@ -14788,6 +15440,73 @@ export class ValidationService {
 }
 
 ================================================================================
+### PLIK: services/WorklistApi.js
+================================================================================
+
+// ============================================================================
+// Frontend: NEW FILE
+// FILE: src/services/WorklistApi.js
+// REASON: Fixes the critical build error "Could not load /app/src/services/WorklistApi.js".
+//         This class wraps API calls for the worklist.
+// ============================================================================
+import apiClient from "@/services/Api.js";
+import { Result } from "@/domain/Result";
+
+/**
+ * ARCHITECTURE: API client for worklist (OrdersShadow) operations.
+ * Isolates transport logic for fetching paginated/filtered orders.
+ */
+export class WorklistApi {
+    constructor() {
+        this.client = apiClient;
+    }
+
+    /**
+     * Fetches the worklist based on filters and pagination.
+     * @param {object} filterValues - Plain object from WorklistFilter.toQueryRecord()
+     * @param {object} pageRequest - { page, size, sort }
+     * @returns {Promise<Result<object>>} A Result containing the paginated data.
+     */
+    async getWorklist(filterValues = {}, pageRequest = { page: 0, size: 25, sort: 'ingestedAt,desc' }) {
+        try {
+            const q = new URLSearchParams();
+
+            // Add filters
+            for (const [key, value] of Object.entries(filterValues)) {
+                if (value) {
+                    q.set(key, value);
+                }
+            }
+
+            // Add pagination
+            q.set("page", String(pageRequest.page >= 0 ? pageRequest.page : 0));
+            q.set("size", String(pageRequest.size || 25));
+            if (pageRequest.sort) {
+                q.set("sort", pageRequest.sort);
+            }
+
+            // Corresponds to OrderController.getOrders
+            const res = await this.client.get(`/api/orders?${q.toString()}`);
+            const data = res.data || {};
+
+            // Map to the structure expected by the old store (for compatibility)
+            // or just return the Spring Page object.
+            return Result.ok({
+                content: Array.isArray(data.content) ? data.content : [],
+                number: Number(data.number || 0),
+                size: Number(data.size || 0),
+                totalElements: Number(data.totalElements || 0),
+                totalPages: Number(data.totalPages || 0),
+            });
+        } catch (e) {
+            console.error("Error fetching worklist:", e);
+            const errorMessage = e.response?.data?.error || e.message || "Failed to fetch worklist.";
+            return Result.fail(new Error(errorMessage));
+        }
+    }
+}
+
+================================================================================
 ### PLIK: debug/StartupProbe.js
 ================================================================================
 
@@ -14910,67 +15629,57 @@ export class EditorRouteGuard {
 ### PLIK: router/index.js
 ================================================================================
 
-// ============================================================================
-// Frontend: Update router/index.js
 // FILE: src/router/index.js
-// REASON: Add the new /logs route.
-// ============================================================================
 import { createRouter as createVueRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
+
+// Core views
 import WorklistView from '@/views/WorklistView.vue';
 import CorrectionEditorView from '@/views/CorrectionEditorView.vue';
 import LoginView from '@/views/LoginView.vue';
-import LogsView from '@/views/LogsView.vue'; // <-- IMPORT NEW VIEW
 
-export const createRouter = (geoRuntime) => {
+// New views
+import LogsView from '@/views/LogsView.vue';
+import ShowcasePro from '@/views/ShowcasePro.vue';
+
+export const createRouter = () => {
   const routes = [
-    {
-      path: '/login',
-      name: 'login',
-      component: LoginView,
-    },
-    {
-      path: '/',
-      redirect: '/worklist',
-    },
-    {
-      path: '/worklist',
-      name: 'worklist',
-      component: WorklistView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/editor/:id',
-      name: 'editor',
-      component: CorrectionEditorView,
-      meta: { requiresAuth: true },
-    },
-    // *** NEW ROUTE FOR LOGS ***
-    {
-      path: '/logs',
-      name: 'logs',
-      component: LogsView,
-      meta: { requiresAuth: true, requiresAdmin: true }, // Protected route
-    },
-    // *** END NEW ROUTE ***
+    { path: '/login', name: 'login', component: LoginView },
+    { path: '/', redirect: '/worklist' },
+
+    { path: '/worklist', name: 'worklist', component: WorklistView, meta: { requiresAuth: true } },
+    { path: '/editor/:id', name: 'editor', component: CorrectionEditorView, meta: { requiresAuth: true } },
+
+    // Admin-only logs
+    { path: '/logs', name: 'logs', component: LogsView, meta: { requiresAuth: true, requiresAdmin: true } },
+
+    // Yellow–Blue design showcase (optional)
+    { path: '/pro', name: 'showcase-pro', component: ShowcasePro, meta: { requiresAuth: true } },
+
+    // 404
+    { path: '/:pathMatch(.*)*', redirect: '/worklist' },
   ];
 
   const router = createVueRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes,
+    scrollBehavior: () => ({ top: 0 }),
   });
 
-  // Navigation Guard
-  router.beforeEach((to, from, next) => {
+  router.beforeEach((to, _from, next) => {
     const auth = useAuthStore();
 
-    if (to.meta.requiresAuth && !auth.isAuthenticated) {
-      auth.setRedirect(to.fullPath);
+    // Public route
+    if (!to.meta.requiresAuth) return next();
+
+    // Need auth
+    if (!auth.isAuthenticated) {
+      auth.setRedirect?.(to.fullPath);
       return next({ name: 'login' });
     }
 
+    // Need admin
     if (to.meta.requiresAdmin && !auth.isAdmin) {
-      // If user is not admin, redirect to worklist
       return next({ name: 'worklist' });
     }
 
@@ -14979,3 +15688,4 @@ export const createRouter = (geoRuntime) => {
 
   return router;
 };
+

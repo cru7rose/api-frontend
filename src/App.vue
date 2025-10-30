@@ -1,64 +1,69 @@
 <template>
-  <div class_name="flex h-screen bg-gray-100 dark:bg-gray-900">
-    <Sidebar :is-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+  <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <!-- App shell (hidden on routes with meta.hideShell) -->
+    <div v-if="showShell" class="flex h-screen">
+      <SidebarNav />
 
-    <div class_name="flex-1 flex flex-col overflow-hidden">
-      <AppHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <AppHeader @toggle-sidebar="toggleSidebar" />
+        <main class="flex-1 overflow-x-hidden overflow-y-auto">
+          <router-view v-slot="{ Component }">
+            <transition name="fade" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </main>
+      </div>
 
-      <main class_name="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
-      </main>
+      <Notification />
     </div>
 
-    <Notification />
+    <!-- Auth/public screens (e.g., /login) -->
+    <div v-else>
+      <router-view />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, provide } from 'vue';
-import { useAuthStore } from '@/stores/auth.js';
-import Sidebar from '@/components/Sidebar.vue';
-import AppHeader from '@/components/AppHeader.vue';
-import Notification from '@/components/Notification.vue';
-import { useNotificationStore } from '@/stores/notification.js';
+import { ref, onMounted, provide, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth.js'
+import AppHeader from '@/components/layout/AppHeader.vue'
+import SidebarNav from '@/components/layout/SidebarNav.vue'
+import Notification from '@/components/Notification.vue'
+import { useNotificationStore } from '@/stores/notification.js'
 
-const authStore = useAuthStore();
-const notificationStore = useNotificationStore();
+const route = useRoute()
+const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
 
-// --- Sidebar State ---
-// Start open on desktop, closed on mobile
-const sidebarOpen = ref(window.innerWidth >= 1024);
+// Provide Pinia auth for any legacy inject('auth') usages
+provide('auth', authStore)
 
-// --- Provide global utilities ---
-// This replaces the old 'showNotification' from main.js
+// Show shell on routes that don't explicitly hide it (e.g., /login has meta.hideShell)
+const showShell = computed(() => !route.meta?.hideShell)
+
+// Optional: hook up mobile/off-canvas behavior later
+const isSidebarOpen = ref(true)
+const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value }
+
 provide('showNotification', (message, type = 'info', duration = 5000) => {
-  notificationStore.show(message, type, duration);
-});
+  notificationStore.show(message, type, duration)
+})
 
 onMounted(() => {
-  authStore.checkAuth();
-
-  // Handle dark mode from user's OS preference
-  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
+  authStore.checkAuth?.()
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && prefersDark)) {
+    document.documentElement.classList.add('dark')
   } else {
-    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.remove('dark')
   }
-});
+})
 </script>
 
 <style scoped>
-/* Simple fade transition for router-view */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

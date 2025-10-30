@@ -1,401 +1,374 @@
 <template>
-  <div class="p-4 sm:p-6 lg:p-8">
-    <div v-if="state.loading" class="text-center">
-      <p>Loading order details...</p>
-    </div>
-    <div v-else-if="state.error" class="text-red-500 text-center">
-      <p>
-        Failed to load order details: {{ state.error }}
-        <span v-if="orderId"> (ID: {{ orderId }})</span>
-      </p>
-    </div>
-
-    <div v-else-if="state.detail" class="space-y-8">
-      <PageHeader
-          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
-          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
-      />
-
-      <div class="mt-8" style="min-height: 400px">
-        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
-        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
-          <p>
-            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-          </p>
+  <div class="min-h-[calc(100vh-8rem)] bg-white">
+    <!-- Header -->
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="h-8 w-8 rounded-xl bg-yellow-400 ring-2 ring-blue-600"></div>
+          <h1 class="text-xl font-semibold text-slate-900">Correction Editor</h1>
         </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AddressCorrectionCard
-            title="Pickup Address"
-            side="pickup"
-            :original-address="state.detail.originalPickup"
-            :stored-address="state.detail.pickupStoredAddress"
-            :reason-code="state.detail.pickupReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedPickup"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('pickup', $event)"
-            @geocode="handleGeocode('pickup')"
-            @save="handleSave('pickup')"
-            @use-original="handleUseOriginal('pickup')"
-        />
-
-        <AddressCorrectionCard
-            title="Delivery Address"
-            side="delivery"
-            :original-address="state.detail.originalDelivery"
-            :stored-address="state.detail.deliveryStoredAddress"
-            :reason-code="state.detail.deliveryReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedDelivery"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('delivery', $event)"
-            @geocode="handleGeocode('delivery')"
-            @save="handleSave('delivery')"
-            @use-original="handleUseOriginal('delivery')"
-        />
-      </div>
-
-      <div
-          v-if="isPending"
-          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
-      >
-        <div class="flex items-center">
-          <input
-              id="applyToSimilar"
-              type="checkbox"
-              v-model="applyToSimilar"
-              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
-          >Apply this correction to all similar pending errors</label
-          >
-        </div>
-
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center gap-2">
           <button
-              @click="handleSave('both')"
-              :disabled="state.saveLoading"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+              class="px-4 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition"
+              :disabled="busy || !canSave"
+              @click="saveAll"
           >
-            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+            {{ busy ? 'Saving…' : 'Save' }}
+          </button>
+          <button
+              class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50"
+              @click="useOriginal"
+          >
+            Use Original
           </button>
         </div>
       </div>
-      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
-        <p class="font-semibold text-gray-700 dark:text-gray-200">
-          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
-          {{ state.detail.processingStatus }})
-        </p>
-      </div>
+    </header>
+
+    <!-- Body -->
+    <div class="mx-auto max-w-7xl px-4 py-6 grid gap-6 lg:grid-cols-2">
+      <!-- Left: Edit Panels -->
+      <section class="space-y-6">
+        <!-- Editable Address -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+          <h2 class="text-lg font-semibold mb-4 text-slate-900">Editable Address</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="text-sm">
+              <span class="text-slate-600">Alias</span>
+              <input class="input" v-model="editable.alias" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Attention Name</span>
+              <input class="input" v-model="editable.attentionName" />
+            </label>
+            <label class="text-sm sm:col-span-2">
+              <span class="text-slate-600">Street</span>
+              <input class="input" v-model="editable.street" @input="onInput('street', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">House No</span>
+              <input class="input" v-model="editable.houseNo" @input="onInput('houseNo', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Postal Code</span>
+              <input class="input" v-model="editable.postalCode" @input="onInput('postalCode', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">City</span>
+              <input class="input" v-model="editable.city" @input="onInput('city', $event.target.value)" />
+            </label>
+            <label class="text-sm">
+              <span class="text-slate-600">Country</span>
+              <input class="input" v-model="editable.country" @input="onInput('country', $event.target.value)" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Dynamic Suggestions -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold text-slate-900">Suggestions</h2>
+            <div class="flex gap-2">
+              <input
+                  class="input w-56"
+                  placeholder="Find by place name…"
+                  v-model="placeSearchQuery"
+                  @input="debouncedNameSearch"
+              />
+              <button
+                  class="px-3 py-2 rounded-xl text-slate-800 bg-white border border-slate-200 hover:bg-slate-50"
+                  :disabled="isLoadingSuggestions"
+                  @click="getDynamicSuggestionsByAddress"
+              >
+                {{ isLoadingSuggestions ? 'Searching…' : 'Search by Address' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isLoadingSuggestions" class="text-sm text-slate-600">Loading suggestions…</div>
+          <ul v-else class="divide-y divide-slate-100">
+            <li
+                v-for="(s, idx) in suggestions"
+                :key="idx"
+                class="py-3 flex items-center justify-between"
+            >
+              <div class="text-sm">
+                <div class="font-medium text-slate-900">{{ s.fullAddressLabel || formatSuggestion(s) }}</div>
+                <div class="text-slate-500">
+                  Score: {{ s.matchScore?.toFixed(2) || 'N/A' }}, Level: {{ s.matchLevel || 'N/A' }}, Source: {{ s.providerSource || 'N/A' }}
+                </div>
+              </div>
+              <button class="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-slate-900"
+                      @click="selectDynamicSuggestion(s)">
+                Use
+              </button>
+            </li>
+          </ul>
+          <p v-if="!isLoadingSuggestions && suggestions.length===0" class="text-sm text-slate-500">No suggestions.</p>
+        </div>
+
+        <!-- Diff Snapshot -->
+        <AddressDiffCard
+            title="Snapshot"
+            :address="editable"
+            :stored-address="stored"
+            stored-label="Stored (TrackIT)"
+            class="bg-white border border-slate-200 rounded-2xl"
+        />
+      </section>
+
+      <!-- Right: Map & Actions -->
+      <section class="space-y-6">
+        <CorrectionMap
+            :address="editable"
+            :center="{ lat: Number(editable.latitude) || 52.2319, lng: Number(editable.longitude) || 21.0067 }"
+            :zoom="13"
+            @geocode="handleGeocode"
+        />
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
+          <button
+              class="w-full px-4 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition"
+              :disabled="busy"
+              @click="geocodeCurrent"
+          >
+            {{ busy ? 'Geocoding…' : 'Geocode Address' }}
+          </button>
+          <button
+              class="w-full px-4 py-2 rounded-xl text-slate-800 bg-white border border-slate-200 hover:bg-slate-50"
+              :disabled="busy"
+              @click="verifyViaJob"
+          >
+            Verify via Job Queue
+          </button>
+        </div>
+      </section>
     </div>
+
+    <!-- Modal: Async Verification Flow -->
+    <BaseModal :is-open="modal.open" @close="closeModal">
+      <template #title>Verification</template>
+      <template #default>
+        <div class="space-y-3">
+          <p v-if="modal.status==='PENDING'">Waiting for results…</p>
+          <p v-if="modal.error" class="text-red-600">Błąd: {{ modal.error }}</p>
+
+          <ul v-if="modal.status==='COMPLETED' && modal.suggestions.length">
+            <li
+                v-for="(s, i) in modal.suggestions"
+                :key="i"
+                class="p-2 rounded cursor-pointer hover:bg-slate-50"
+                :class="{ 'bg-amber-100' : modal.selected === s }"
+                @click="modal.selected = s"
+            >
+              {{ s.fullAddressLabel }}
+            </li>
+          </ul>
+          <p v-else-if="modal.status==='COMPLETED'" class="text-slate-600">Brak sugestii.</p>
+        </div>
+      </template>
+      <template #footer>
+        <button class="px-3 py-2 rounded-xl border border-slate-200" @click="closeModal">Close</button>
+        <button
+            class="px-3 py-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
+            :disabled="!modal.selected || modal.busy"
+            @click="submitCorrection"
+        >
+          Apply
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <script setup>
-// *** Import 'watch' ***
-import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from '@/composables/useToast.js';
-import PageHeader from '@/components/PageHeader.vue';
-import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
+import { ref, reactive } from 'vue';
+import { useRoute } from 'vue-router';
+import apiClient from '@/services/Api.js';
+import CorrectionMap from '@/components/CorrectionMap.vue';
+import AddressDiffCard from '@/components/AddressDiffCard.vue';
+import BaseModal from '@/components/Shared/BaseModal.vue';
 
-// Import Manifesto architecture controllers
-import { MapController } from "@/controllers/MapController.js";
-import { EditorFacade } from "@/controllers/EditorFacade.js";
-import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-// *** REMOVED IdempotentSaveController ***
-import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
-import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
-import { Address } from '@/domain/WorkbenchModels.js';
-import { AddressExceptionApi } from "@/services/AddressExceptionApi.js"; // *** ADDED IMPORT ***
-
-// === Injections ===
-const orchestrator = inject("orchestrator");
-const geoRuntime = inject("geoRuntime");
-const showNotification = inject("showNotification");
-const toast = useToast();
-
-// === Route & Store ===
 const route = useRoute();
-const router = useRouter();
-const worklistStore = useWorklistStore();
-const orderId = ref(route.params.id);
+const orderId = String(route.params.id || '');
 
-// === Local State ===
-const state = reactive({
-  loading: true,
-  error: null,
-  detail: null,
-  editedPickup: new Address(),
-  editedDelivery: new Address(),
-  geocodeLoading: false,
-  saveLoading: false,
-});
-const applyToSimilar = ref(false);
-const routeInfo = ref(null);
-const mapContainer = ref(null); // DOM ref for map
-
-// === Controller Setup ===
-let mapController = null;
-let editorFacade = null;
-let saveFlow = null;
-let commandBus = null;
-
-const isPending = computed(
-    () => state.detail?.processingStatus === 'PENDING_VERIFICATION'
-);
-
-// === Lifecycle Hooks ===
-onMounted(async () => {
-  if (!orchestrator || !geoRuntime) {
-    state.error = "Critical error: Orchestrator or GeoRuntime not injected.";
-    state.loading = false;
-    return;
-  }
-
-  // 1. Initialize Editor Facade (mapController is null for now)
-  editorFacade = orchestrator.getEditor(null);
-
-  // 2. Initialize Save Controllers
-  // *** THIS IS THE FIX for the 'deprecated' warning ***
-  const api = new AddressExceptionApi();
-  saveFlow = new SaveFlowController(editorFacade, worklistStore, api);
-  // *** END FIX ***
-  commandBus = new EditorCommandBus(editorFacade, saveFlow);
-
-  // 3. Load Order Data (this will trigger the 'watch' block to init the map)
-  await loadOrderData();
+const stored = ref(null);
+const editable = reactive({
+  alias: '', attentionName: '',
+  street: '', houseNo: '', postalCode: '', city: '', country: 'Polska',
+  latitude: '', longitude: ''
 });
 
-onUnmounted(() => {
-  // Clean up map
-  if (mapController) {
-    mapController.destroy();
-    mapController = null;
-  }
-});
+const busy = ref(false);
+const canSave = ref(true);
 
-// *** FIX: This is the correct way to watch the ref ***
-// This watch fires when the 'mapContainer' ref changes.
-// 1. On load, it's null.
-// 2. After loadOrderData() sets state.detail, Vue renders the <div>.
-// 3. Vue attaches the <div> to the ref, so mapContainer.value becomes non-null.
-// 4. This 'watch' block fires, and we can safely initialize the map.
-watch(mapContainer, async (newMapEl) => {
-  // 1. If the element (newMapEl) exists and the controller (mapController) doesn't...
-  if (newMapEl && !mapController) {
-    log.info("Map container is now in DOM. Initializing MapController...");
-    try {
-      const mapAdapter = geoRuntime.mapAdapter();
-      mapController = new MapController(mapAdapter);
+/* ----------------------- Suggestions (address/name) ----------------------- */
+const suggestions = ref([]);
+const isLoadingSuggestions = ref(false);
+const placeSearchQuery = ref('');
+let debounceTimer = null;
 
-      // 2. Initialize the map controller with the real DOM element
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
-
-      // 3. Inject the *initialized* map into the facade
-      editorFacade.preview = orchestrator.createPreviewController(mapController);
-      log.info("MapController initialized and injected into facade.");
-
-      // 4. Now that the map is ready, draw the initial route
-      if (state.editedPickup && state.editedDelivery) {
-        await editorFacade.preview.policy.showAndFitRoute(
-            state.editedPickup,
-            state.editedDelivery
-        );
-        log.info("Initial route and markers drawn.");
-      }
-
-      // 5. Fetch route stats
-      await refreshRouteInfo();
-
-    } catch (err) {
-      log.error("Failed to initialize MapController in watch block:", err);
-      toast.error("Failed to load map: " + err.message, 10000);
-    }
-  }
-  // 6. If the element is gone (component unmounted) and controller *does* exist...
-  else if (!newMapEl && mapController) {
-    log.info("Map container removed. Destroying map controller.");
-    await mapController.destroy();
-    mapController = null;
-    if (editorFacade) editorFacade.preview = null;
-  }
-});
-// *** END FIX ***
-
-
-// === Methods ===
-async function loadOrderData() {
-  state.loading = true;
-  state.error = null;
-
-  // Destroy the old map controller IF it exists
-  // This sets mapContainer.value to null (when v-if hides it), triggering the watch's cleanup
-  if (mapController) {
-    await mapController.destroy();
-    mapController = null;
-    if (editorFacade) editorFacade.preview = null;
-  }
-
-  // Set detail to null to hide the old view and unmount the mapContainer ref
-  state.detail = null;
-
-  // Wait for the DOM to update (v-if="state.detail" is now false)
-  await nextTick();
-
-  const result = await editorFacade.load(orderId.value);
-
-  if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
-    // Setting these will trigger the v-else-if and THEN the mapContainer watch
-    state.detail = snap.detail;
-    state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.editedDelivery;
-  } else {
-    state.error = result.error.message;
-    toast.error(`Failed to load order: ${state.error}`, 10000);
-  }
-  state.loading = false;
+function formatSuggestion(s) {
+  const parts = [s.street, s.houseNumber, s.postalCode, s.city].filter(Boolean);
+  return parts.join(' ');
 }
 
-// Fetches route stats from OSRM (via proxy)
-async function refreshRouteInfo() {
-  if (!geoRuntime || !geoRuntime._config.routingUrl) {
-    log.warn("Cannot refresh route info: No routingUrl in geoRuntime.");
+function updateField(field, value) { editable[field] = value; }
+
+const onInput = (field, value) => {
+  updateField(field, value);
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { getDynamicSuggestionsByAddress(); }, 600);
+};
+
+const getDynamicSuggestionsByAddress = async () => {
+  const query = {
+    street: editable.street,
+    houseNumber: editable.houseNo,
+    postalCode: editable.postalCode,
+    city: editable.city,
+    country: 'Polska'
+  };
+  if (Object.values(query).every(v => !v || String(v).trim() === '')) {
+    suggestions.value = [];
     return;
   }
-
-  const p = state.editedPickup;
-  const d = state.editedDelivery;
-
-  if (!p?.longitude || !p?.latitude || !d?.longitude || !d?.latitude) {
-    routeInfo.value = null;
-    return;
-  }
-
-  const coords = `${p.longitude},${p.latitude};${d.longitude},${d.latitude}`;
-  const url = `${geoRuntime._config.routingUrl}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
-
+  isLoadingSuggestions.value = true;
   try {
-    const response = await fetch(url); // Use fetch, as it's not an API call
-    if (!response.ok) throw new Error(`OSRM responded with ${response.status}`);
-    const data = await response.json();
-    if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
-      routeInfo.value = {
-        distance: data.routes[0].distance,
-        duration: data.routes[0].duration,
-      };
-    } else {
-      routeInfo.value = null;
-    }
-  } catch (error) {
-    log.error('Error fetching OSRM route info:', error);
-    routeInfo.value = null;
-    toast.error(`Could not calculate route: ${error.message}`, 4000);
-  }
-}
-
-// Update local state and facade state
-function updateAddress(side, newAddressObject) {
-  if (side === 'pickup') {
-    state.editedPickup = newAddressObject;
-    editorFacade.setManualPickup(newAddressObject);
-  } else {
-    state.editedDelivery = newAddressObject;
-    editorFacade.setManualDelivery(newAddressObject);
-  }
-  // After manual edit, refresh route
-  refreshRouteInfo();
-  if (mapController) {
-    editorFacade.refreshRoute(); // Redraw map line
-  }
-}
-
-async function handleGeocode(side) {
-  state.geocodeLoading = true;
-  toast.info(`Geocoding ${side} address...`, 2000);
-
-  // This uses the Manifesto stack (GeoRuntime -> NominatimAdapter)
-  const result = await editorFacade.geocodeAndFocus(side);
-
-  if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
-    if (side === 'pickup') {
-      state.editedPickup = snap.editedPickup;
-    } else {
-      state.editedDelivery = snap.editedDelivery;
-    }
-    await editorFacade.refreshRoute(); // Redraw route
-    await refreshRouteInfo(); // Get new stats
-    toast.success('Geocoding successful. Address updated.', 3000);
-  } else {
-    log.error(`Geocode failed for ${side}:`, result.error);
-    toast.error(`Geocoding failed: ${result.error.message}`, 5000);
-  }
-  state.geocodeLoading = false;
-}
-
-function handleUseOriginal(side) {
-  if (side === 'pickup') {
-    commandBus.useOriginalPickup();
-  } else {
-    commandBus.useOriginalDelivery();
-  }
-  // Update local state from facade
-  const snap = editorFacade.snapshot().editor;
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
-
-  editorFacade.refreshRoute();
-  refreshRouteInfo();
-  toast.info(`Original ${side} address restored.`, 2000);
-}
-
-async function handleSave(side) {
-  state.saveLoading = true;
-  let result;
-
-  try {
-    if (side === 'pickup') {
-      toast.info("Saving pickup and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('pickup', applyToSimilar.value);
-    } else if (side === 'delivery') {
-      toast.info("Saving delivery and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('delivery', applyToSimilar.value);
-    } else {
-      toast.info("Saving both and fetching next order...", 3000);
-      result = await saveFlow.saveThenAwait('both', applyToSimilar.value);
-    }
-
-    if (result.ok) {
-      if (result.value.nextOrderId) {
-        toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
-        // Reload data for the new ID
-        orderId.value = result.value.nextOrderId;
-        await loadOrderData();
-      } else {
-        toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
-      }
-    } else {
-      throw result.error;
-    }
-  } catch (e) {
-    log.error(`Save flow failed for side '${side}':`, e);
-    toast.error(`Save failed: ${e.message}`, 10000);
+    const { data } = await apiClient.post('/api/suggest/address', query);
+    suggestions.value = Array.isArray(data) ? data : [];
   } finally {
-    state.saveLoading = false;
+    isLoadingSuggestions.value = false;
   }
+};
+
+const getDynamicSuggestionsByName = async () => {
+  if (!placeSearchQuery.value?.trim()) return;
+  isLoadingSuggestions.value = true;
+  try {
+    const { data } = await apiClient.get('/api/suggest/name', { params: { q: placeSearchQuery.value } });
+    suggestions.value = Array.isArray(data) ? data : [];
+  } finally {
+    isLoadingSuggestions.value = false;
+  }
+};
+
+const debouncedNameSearch = () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(getDynamicSuggestionsByName, 600);
+};
+
+const selectDynamicSuggestion = (s) => {
+  Object.assign(editable, {
+    ...editable,                            // ✅ valid spread
+    street: s.street || '',
+    houseNo: s.houseNumber || '',
+    postalCode: s.postalCode || '',
+    city: s.city || '',
+  });
+  placeSearchQuery.value = s.fullAddressLabel || '';
+  suggestions.value = [];
+};
+
+/* ------------------------------ Map/Geocode ------------------------------- */
+const handleGeocode = (coords) => {
+  editable.latitude = String(coords.lat ?? '');
+  editable.longitude = String(coords.lng ?? '');
+};
+
+const geocodeCurrent = async () => {
+  busy.value = true;
+  try {
+    const { data } = await apiClient.post('/api/geocode', {
+      street: editable.street, houseNo: editable.houseNo,
+      postalCode: editable.postalCode, city: editable.city, country: editable.country
+    });
+    if (data?.lat && data?.lng) {
+      editable.latitude = String(data.lat);
+      editable.longitude = String(data.lng);
+    }
+  } finally {
+    busy.value = false;
+  }
+};
+
+/* ----------------------------- Verify via Job ----------------------------- */
+const modal = reactive({ open:false, status:'IDLE', jobId:null, suggestions:[], selected:null, error:'', busy:false });
+
+const verifyViaJob = async () => {
+  modal.open = true;
+  modal.status = 'PENDING';
+  modal.error = '';
+  try {
+    const { data } = await apiClient.post(`/api/address-verification/start/${orderId}`);
+    modal.jobId = data?.verificationJobId;
+    await pollJob();
+  } catch {
+    modal.error = 'Nie udało się rozpocząć procesu weryfikacji.';
+    modal.status = 'FAILED';
+  }
+};
+
+async function pollJob() {
+  let attempts = 0;
+  const maxAttempts = 20;
+  while (attempts++ < maxAttempts) {
+    await new Promise(r => setTimeout(r, 1500));
+    const { data } = await apiClient.get(`/api/address-verification/status/${modal.jobId}`);
+    if (!data?.status) continue;
+    if (data.status === 'COMPLETED') {
+      modal.status = 'COMPLETED';
+      modal.suggestions = data.suggestions || [];
+      return;
+    }
+    if (data.status === 'FAILED') {
+      modal.status = 'FAILED';
+      modal.error = 'Weryfikacja nie powiodła się.';
+      return;
+    }
+  }
+  modal.status = 'FAILED';
+  modal.error = 'Przekroczono limit oczekiwania.';
 }
 
-// Basic logger shim
-const log = {
-  info: (...args) => console.info(...args),
-  warn: (...args) => console.warn(...args),
-  error: (...args) => console.error(...args),
+const submitCorrection = async () => {
+  if (!modal.selected) return;
+  modal.busy = true;
+  try {
+    await apiClient.post(`/api/orders/${orderId}/address`, {
+      ...editable,
+      street: modal.selected.street || editable.street,
+      houseNo: modal.selected.houseNumber || editable.houseNo,
+      postalCode: modal.selected.postalCode || editable.postalCode,
+      city: modal.selected.city || editable.city
+    });
+    modal.open = false;
+  } finally {
+    modal.busy = false;
+  }
+};
+
+const closeModal = () => { modal.open = false; };
+
+/* -------------------------------- Actions -------------------------------- */
+const saveAll = async () => {
+  busy.value = true;
+  try {
+    await apiClient.post(`/api/orders/${orderId}/address`, { ...editable });
+  } finally {
+    busy.value = false;
+  }
+};
+
+const useOriginal = async () => {
+  // Reload from backend saved/original
+  const { data } = await apiClient.get(`/api/orders/${orderId}/original-address`);
+  Object.assign(editable, data || {});
 };
 </script>
+
+<style scoped>
+.input {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none transition text-sm;
+}
+.input:focus { box-shadow: 0 0 0 3px rgba(30,78,140,.25); border-color: #1e4e8c; }
+</style>

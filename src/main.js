@@ -1,67 +1,18 @@
-// ============================================================================
-// Frontend: Fix router/index.js
-// FILE: src/router/index.js (Supersedes previous version)
-// REASON: Removes a syntax error (an extra '}') at the end of the file
-//         that was causing the 'vite:define' build to fail.
-// ============================================================================
-import { createRouter as createVueRouter, createWebHistory } from 'vue-router';
-import { useAuthStore } from '@/stores/auth.js';
-import WorklistView from '@/views/WorklistView.vue';
-import CorrectionEditorView from '@/views/CorrectionEditorView.vue';
-import LoginView from '@/views/LoginView.vue';
-import LogsView from '@/views/LogsView.vue'; // <-- IMPORT NEW VIEW
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import App from './App.vue';
+import { createRouter } from '@/router';
 
-export const createRouter = (geoRuntime) => {
-    const routes = [
-        {
-            path: '/login',
-            name: 'login',
-            component: LoginView,
-        },
-        {
-            path: '/',
-            redirect: '/worklist',
-        },
-        {
-            path: '/worklist',
-            name: 'worklist',
-            component: WorklistView,
-            meta: { requiresAuth: true },
-        },
-        {
-            path: '/editor/:id',
-            name: 'editor',
-            component: CorrectionEditorView,
-            meta: { requiresAuth: true },
-        },
-        // *** NEW ROUTE FOR LOGS ***
-        {
-            path: '/logs',
-            name: 'logs',
-            component: LogsView,
-            meta: { requiresAuth: true, requiresAdmin: true }, // Protected route
-        },
-        // *** END NEW ROUTE ***
-    ];
-    const router = createVueRouter({
-        history: createWebHistory(import.meta.env.BASE_URL),
-        routes,
-    });
-    // Navigation Guard
-    router.beforeEach((to, from, next) => {
-        const auth = useAuthStore();
+// ✅ Load Tailwind layers + theme tokens
+import '@/assets/main.css';
 
-        if (to.meta.requiresAuth && !auth.isAuthenticated) {
-            auth.setRedirect(to.fullPath);
-            return next({ name: 'login' });
-        }
+const app = createApp(App);
+const pinia = createPinia();
+app.use(pinia);
 
-        if (to.meta.requiresAdmin && !auth.isAdmin) {
-            // If user is not admin, redirect to worklist
-            return next({ name: 'worklist' });
-        }
+const router = createRouter();
+app.use(router);
 
-        return next();
-    });
-    return router;
-};
+router.isReady().then(() => {
+    app.mount('#app');
+});

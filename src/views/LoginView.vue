@@ -1,55 +1,66 @@
-<!--
-ARCHITECTURE: LoginView authenticates via AuthController and redirects to the intended route.
-It follows the manifesto by delegating auth logic to the controller and keeping UI declarative.
-Responsibilities:
-- Collect credentials, call auth.login(), then navigate to ?r=... or /dashboard.
--->
 <template>
-  <section class="login">
-    <header><h1>Sign in</h1></header>
-    <form @submit.prevent="onSubmit">
-      <label>Username <input v-model="username" autocomplete="username" /></label>
-      <label>Password <input v-model="password" type="password" autocomplete="current-password" /></label>
-      <button :disabled="busy" type="submit">{{ busy ? 'Signing in…' : 'Sign in' }}</button>
-      <p v-if="err" class="err">{{ err }}</p>
-    </form>
-  </section>
+  <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8 bg-gray-50">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+      <h2 class="text-center text-3xl font-extrabold text-blue-700 tracking-tight">
+        DANXILS Triage Workbench
+      </h2>
+      <p class="mt-2 text-center text-sm text-gray-600">Sign in to your account</p>
+    </div>
+
+    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
+      <div class="bg-white px-6 py-12 shadow-2xl rounded-xl ring-1 ring-gray-100">
+        <form class="space-y-6" @submit.prevent="handleLogin">
+          <div>
+            <label for="username" class="block text-sm font-medium leading-6 text-gray-900">Username</label>
+            <div class="mt-2">
+              <input
+                  id="username" name="username" type="text" required v-model="credentials.username"
+                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
+                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium leading-6 text-gray-900">Password</label>
+            <div class="mt-2">
+              <input
+                  id="password" name="password" type="password" required v-model="credentials.password"
+                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
+                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
+              />
+            </div>
+          </div>
+
+          <button
+              type="submit"
+              class="w-full flex justify-center py-2.5 px-4 rounded-xl font-medium text-white bg-blue-600 hover:bg-blue-700 transition"
+          >
+            Sign in
+          </button>
+
+          <p v-if="errorMessage" class="text-red-600 text-sm">{{ errorMessage }}</p>
+        </form>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { inject, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { reactive, ref } from 'vue';
+import apiClient from '@/services/Api.js';
 
-const auth = inject("auth"); // provided in main.js
-const route = useRoute();
-const router = useRouter();
+const credentials = reactive({ username: '', password: '' });
+const errorMessage = ref('');
 
-const username = ref("admin");
-const password = ref("pass");
-const busy = ref(false);
-const err = ref("");
-
-async function onSubmit() {
-  err.value = "";
-  busy.value = true;
+const handleLogin = async () => {
+  errorMessage.value = '';
   try {
-    const r = await auth.login(username.value, password.value);
-    if (!r.ok) throw r.error || new Error("Login failed");
-    const go = String(route.query.r || "/dashboard");
-    router.push(go);
+    await apiClient.post('/api/auth/login', credentials);
+    // Router guard should redirect after auth binds token
+    window.location.assign('/worklist');
   } catch (e) {
-    err.value = e?.message || "Login failed";
-  } finally {
-    busy.value = false;
+    errorMessage.value = 'Login failed';
   }
-}
+};
 </script>
-
-<style scoped>
-.login { max-width: 420px; margin: 8vh auto; padding: 16px; border: 1px solid #eee; border-radius: 8px; background: #fff; display: grid; gap: 12px; }
-form { display: grid; gap: 10px; }
-label { display: grid; gap: 4px; font-size: 12px; }
-input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-button { padding: 8px 10px; font-size: 14px; }
-.err { color: #c0392b; margin: 0; }
-</style>

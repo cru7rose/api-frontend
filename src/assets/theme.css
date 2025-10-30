@@ -1,31 +1,68 @@
-/*
-// ============================================================================
-// Frontend: Add theme.css
-// FILE: src/assets/theme.css (NEW FILE)
-// REASON: This is the main CSS entry point that imports all of
-//         Tailwind's styles. It was missing.
-// ============================================================================
-*/
-
-/* Import Tailwind's base styles (resets) */
-@tailwind base;
-
-/* Import Tailwind's component classes */
-@tailwind components;
-
-/* Import Tailwind's utility classes */
-@tailwind utilities;
-
-/* You can add custom global styles or component layers here */
-@layer base {
-    :root {
-        --color-primary: #007bff; /* Example: A blue primary color */
-        --color-secondary: #6c757d; /* Example: A gray secondary color */
-    }
-
-    body {
-        @apply bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
+:root {
+  --bg: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --primary: #1e4e8c;  /* deep blue */
+  --primary-600: #153e75;
+  --accent: #ffd400;   /* yellow */
+  --accent-600: #ffbf00;
+  --ring: rgba(30,78,140,.25);
+  --card: rgba(255,255,255,.72);
+  --border: rgba(2,6,23,.08);
+  --shadow-1: 0 1px 2px rgba(2,6,23,.06);
+  --shadow-2: 0 12px 32px rgba(2,6,23,.10);
+  --radius: 1.2rem;
 }
+
+html, body { background: var(--bg); color: var(--text); }
+
+.bg-brand { background-image: linear-gradient(135deg, var(--accent), var(--primary)); }
+.text-grad { background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; color: transparent; }
+
+.card {
+  background: var(--card);
+  backdrop-filter: saturate(180%) blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+.focus-ring { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+.btn { @apply inline-flex items-center justify-center font-medium transition px-4 py-2 rounded-xl select-none; }
+.btn-primary { @apply text-white; background: linear-gradient(180deg, var(--primary), var(--primary-600)); box-shadow: 0 8px 18px rgba(21,62,117,.28); }
+.btn-accent  { color:#0b1220; background: linear-gradient(180deg, var(--accent), var(--accent-600)); box-shadow: 0 8px 18px rgba(255,191,0,.35); }
+.btn-ghost   { @apply bg-white border border-slate-200 text-slate-800; }
+.btn:hover { filter: brightness(1.05); }
+.btn:active { transform: translateY(1px); }
+
+.badge { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold border; }
+.badge-success { @apply text-green-700 bg-green-50 border-green-200; }
+.badge-warning { @apply text-amber-800 bg-amber-50 border-amber-200; }
+.badge-danger  { @apply text-rose-700 bg-rose-50 border-rose-200; }
+.badge-info    { @apply text-sky-700 bg-sky-50 border-sky-200; }
+.badge-neutral { @apply text-slate-700 bg-slate-50 border-slate-200; }
+
+.input {
+  @apply w-full rounded-xl border bg-white px-3 py-2 outline-none transition text-sm;
+  border-color: #e2e8f0;
+}
+.input:focus { box-shadow: 0 0 0 3px var(--ring); border-color: var(--primary); }
+.select { @apply input; }
+.toggle { @apply relative inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition; }
+.toggle-dot { @apply h-5 w-5 transform rounded-full bg-white shadow transition; left: 2px; }
+.toggle-on { background: linear-gradient(135deg, var(--accent), var(--primary)); }
+.toggle-on .toggle-dot { transform: translateX(20px); }
+.tab { @apply px-3 py-2 text-sm rounded-lg border; border-color: #e2e8f0; }
+.tab-active { @apply border-transparent; background: linear-gradient(135deg, #fff, #fff) padding-box, linear-gradient(135deg, var(--accent), var(--primary)) border-box; border: 2px solid transparent; }
+.progress { @apply w-full h-3 rounded-full bg-slate-100 overflow-hidden; }
+.progress-inner { @apply h-3 transition-all; background: linear-gradient(135deg, var(--accent), var(--primary)); }
+.kpi { @apply flex items-center gap-4 p-5 rounded-2xl border; border-color: #e2e8f0; background: #fff; }
+.kpi-icon { @apply w-11 h-11 rounded-2xl text-white flex items-center justify-center font-bold; background: linear-gradient(135deg, var(--accent), var(--primary)); box-shadow: 0 10px 22px rgba(17,26,54,.18); }
+.table { @apply min-w-full text-sm; }
+.table th { @apply text-left text-slate-500 border-b py-2 pr-4; }
+.table td { @apply border-b py-3 pr-4; }
+.sidebar { @apply fixed inset-y-0 left-0 w-64 p-4; background: #ffffff; border-right: 1px solid #e2e8f0; }
+.navbar { @apply sticky top-0 z-50; background: #ffffffcc; backdrop-filter: blur(10px); border-bottom: 1px solid #e2e8f0; }
+.modal-backdrop { @apply fixed inset-0 bg-black/40 flex items-center justify-center p-6; }
+.modal { @apply card p-6 max-w-lg w-full; }
