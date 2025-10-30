@@ -1,35 +1,30 @@
-/**
- * ARCHITECTURE: Axios singleton configured to cooperate with the Vite proxy in development.
- * Responsibilities:
- * - Use baseURL from env; when set to "/" (recommended for dev), requests are same-origin and get proxied.
- */
-import axios from "axios";
+// ============================================================================
+// Axios Client: Simple, Reliable, Same-Origin
+// Back-end endpoints (expose):   /auth/login, /auth/refresh, /worklist, ...
+// Front-end calls (use):         api.get('/auth/login')  → nginx → backend
+// ============================================================================
 
-function resolveBaseUrl() {
-  const w = typeof window !== "undefined" ? window : {};
-  const winBase = (w.__API_BASE_URL__ || "").trim();
-  const viteBase = (import.meta?.env?.VITE_API_BASE_URL || "").trim();
-  const base = (winBase || viteBase);
-  if (!base) return "/";          // default to same-origin → dev proxy handles cross-origin
-  if (base === "/") return "/";   // explicit proxy mode
-  return base.replace(/\/+$/, "");
-}
+import axios from 'axios';
 
 const api = axios.create({
-  baseURL: resolveBaseUrl(),
+  baseURL: '/',                     // ✅ NO "/api" prefix
   withCredentials: true,
   headers: {
-    "Accept": "application/json",
-    "Content-Type": "application/json",
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
   },
 });
 
+// Nice readable errors:
 api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    err.message = err?.response?.data?.message || err.message || "Request failed";
-    return Promise.reject(err);
-  }
+    response => response,
+    error => {
+      error.message =
+          error?.response?.data?.message ||
+          error.message ||
+          'Request failed';
+      return Promise.reject(error);
+    }
 );
 
 export default api;
