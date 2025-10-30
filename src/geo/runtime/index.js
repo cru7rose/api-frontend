@@ -1,8 +1,8 @@
-// Bridge so the app can import "@/geo/runtime" consistently
-// and ALWAYS have a ready Leaflet adapter, even if the underlying class
-// requires an explicit init.
+// Bridge so the app can import "@/geo/runtime" and get a READY map adapter.
+// Reuses your existing adapters/GeoRuntime and guarantees adapter.create().
 
 import { GeoRuntime } from '@/adapters/GeoRuntime';
+import * as L from 'leaflet';
 
 function readEnv() {
     const env = import.meta?.env ?? {};
@@ -13,27 +13,55 @@ function readEnv() {
         nominatimEmail: env.VITE_NOMINATIM_EMAIL || 'admin@danxils.com',
         nominatimUrl: (env.VITE_NOMINATIM_URL || '/nominatim').replace(/\/+$/, ''),
         routingUrl: (env.VITE_ROUTING_PROVIDER_URL || '/osrm').replace(/\/+$/, ''),
-        tileUrl: (env.VITE_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+        tileUrl: env.VITE_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         maxZoom: Number(env.VITE_TILE_MAX_ZOOM || 19),
-        attribution:
-            env.VITE_TILE_ATTR ||
-            '&copy; OpenStreetMap contributors',
+        attribution: env.VITE_TILE_ATTR || '&copy; OpenStreetMap contributors',
     };
 }
 
-/**
- * Ensure runtime has a working Leaflet adapter:
- * - If your GeoRuntime exposes an init/set method, use it.
- * - Otherwise, polyfill mapAdapter() so callers work immediately.
- */
-async function ensureLeafletAdapter(runtime, cfg) {
-    const adapter = {
-        tileUrl: cfg.tileUrl,
-        attribution: cfg.attribution,
-        maxZoom: cfg.maxZoom,
-    };
+// Build a Leaflet adapter object that MapController can consume.
+function buildLeafletAdapter(cfg) {
+    return {
+        /**
+         * Create and attach a Leaflet map to the given container element.
+         * Returns the Leaflet map instance.
+         */
+        create(container, options = {}) {
+            if (!container) throw new Error('Leaflet adapter: container is required');
+            const map = L.map(container, {
+                zoomControl: true,
+                ...options,
+            });
 
-    // Preferred: if your class exposes a setter/initializer, use it
+            L.tileLayer(cfg.tileUrl, {
+                attribution: cfg.attribution,
+                maxZoom: cfg.maxZoom,
+            }).addTo(map);
+
+            // Provide small helpers some controllers like to call
+            map.__adapter = {
+                setCenter(lat, lon, zoom) {
+                    if (typeof zoom === 'number') map.setView([lat, lon], zoom);
+                    else map.setView([lat, lon]);
+                },
+                fitBounds(bounds) {
+                    // bounds: [[lat1, lon1], [lat2, lon2]]
+                    map.fitBounds(bounds);
+                },
+                addMarker(lat, lon, opts = {}) {
+                    return L.marker([lat, lon], opts).addTo(map);
+                },
+            };
+
+            return map;
+        },
+    };
+}
+
+async function ensureMapAdapter(runtime, cfg) {
+    const adapter = buildLeafletAdapter(cfg);
+
+    // If your GeoRuntime supports explicit setters, use them:
     if (typeof runtime.initLeaflet === 'function') {
         await runtime.initLeaflet(adapter);
         return;
@@ -43,59 +71,33 @@ async function ensureLeafletAdapter(runtime, cfg) {
         return;
     }
 
-    // Fallback: polyfill mapAdapter() if it's missing or throws
-    let safeGetter = null;
-    try {
-        if (typeof runtime.mapAdapter === 'function') {
-            // Call once defensively; if it throws "not initialized", we'll override.
-            runtime.mapAdapter();
-            safeGetter = runtime.mapAdapter.bind(runtime);
-        }
-    } catch (_) {
-        // mapAdapter exists but is not initialized; override below
-    }
-
-    if (!safeGetter) {
-        // Provide a stable getter
-        safeGetter = () => adapter;
-    }
-
-    // Finalize the getter so consumers (MapController) can call it freely
-    runtime.mapAdapter = safeGetter;
+    // Otherwise guarantee a working getter.
+    runtime.mapAdapter = () => adapter;
 }
 
-/**
- * Factory used by main.js
- */
 export async function createGeoRuntime() {
     const cfg = readEnv();
+
     const runtime = new GeoRuntime({
-        map: cfg.map,               // 'leaflet' | 'google'
-        geocode: cfg.geocode,       // 'nominatim' | 'google'
-        places: cfg.places,         // 'none' | 'google'
+        map: cfg.map,
+        geocode: cfg.geocode,
+        places: cfg.places,
         nominatimEmail: cfg.nominatimEmail,
         nominatimUrl: cfg.nominatimUrl,
         routingUrl: cfg.routingUrl,
     });
 
-    // Always ensure Leaflet adapter is ready to use
+    // Ensure adapter exists and has create()
     if (cfg.map === 'leaflet') {
-        await ensureLeafletAdapter(runtime, cfg);
+        await ensureMapAdapter(runtime, cfg);
     }
 
-    // Optionally, expose read-only geocode/routing surfaces if your class doesn’t
+    // Fill surfaces if your class doesn’t expose them
     if (!runtime.geocode) {
-        runtime.geocode = {
-            provider: cfg.geocode,
-            baseUrl: cfg.nominatimUrl,
-            email: cfg.nominatimEmail,
-        };
+        runtime.geocode = { provider: cfg.geocode, baseUrl: cfg.nominatimUrl, email: cfg.nominatimEmail };
     }
     if (!runtime.routing) {
-        runtime.routing = {
-            provider: 'osrm',
-            baseUrl: cfg.routingUrl,
-        };
+        runtime.routing = { provider: 'osrm', baseUrl: cfg.routingUrl };
     }
 
     return runtime;
