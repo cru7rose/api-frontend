@@ -1,5 +1,5 @@
 /**
- * ARCHITECTURE: ApiAuthBinder binds/unbinds the Authorization header on the shared ApiHttpClient singleton.
+ * ARCHITECTURE: ApiAuthBinder binds/unbinds the Authorization header on the Shared ApiHttpClient singleton.
  * Responsibilities:
  * - Apply "Authorization: <type> <token>" to axios defaults; remove it on logout.
  */

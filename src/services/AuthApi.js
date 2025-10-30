@@ -3,7 +3,7 @@
  * It follows the manifesto by isolating transport details and returning deterministic Result objects.
  * Responsibilities:
  * - POST credentials to /auth/login and return a normalized session object on success.
- * - Keep transport client injectable for testing; default to the shared Axios instance.
+ * - Keep transport client injectable for testing; default to the Shared Axios instance.
  */
 import api from "@/services/Api.js";
 import { Result } from "@/domain/Result";

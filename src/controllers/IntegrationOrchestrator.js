@@ -30,7 +30,7 @@ export class IntegrationOrchestrator {
     this._worklist = null;
     this._editor = null;
 
-    // Instantiate shared GeocodeWithCacheController using the provided GeoRuntime
+    // Instantiate Shared GeocodeWithCacheController using the provided GeoRuntime
     // This assumes GeoRuntime.init() will be called before geocodeController.geocode() is needed.
     this._geocodeController = new GeocodeWithCacheController(this._geoRuntime);
   }
@@ -71,7 +71,7 @@ export class IntegrationOrchestrator {
       // Continue with null adapter
     }
 
-    // Instantiate CorrectionEditorController, passing the shared GeocodeWithCacheController
+    // Instantiate CorrectionEditorController, passing the Shared GeocodeWithCacheController
     const ctrl = new CorrectionEditorController(this.api, this._geocodeController);
 
     // Instantiate EditorFacade, passing the relevant components
