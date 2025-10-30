@@ -1,10 +1,10 @@
 // ============================================================================
-// Frontend: Fix WorklistFacade import
-// FILE: src/controllers/WorklistFacade.js (Supersedes previous version)
-// REASON: Correct the case of the 'worklistStore' import to 'WorklistStore'
-//         to match the filename, fixing the Docker build failure.
-// ============================================================================
+// Frontend: Fix WorklistFacade (Supersedes previous version)
 // FILE: src/controllers/WorklistFacade.js
+// REASON: Correct the import case of 'WorklistStore'.
+//         Align method calls (e.g., loadWorklistPage -> loadWorklist)
+//         with the fixed WorklistStore.
+// ============================================================================
 import { useWorklistStore } from "@/stores/WorklistStore.js"; // *** CORRECTED FILE CASE ***
 import { PollingService } from "@/services/PollingService.js";
 import { Result } from "@/domain/Result";
@@ -17,12 +17,17 @@ export class WorklistFacade {
     }
 
     async initAndLoad(filters = {}) {
+        // *** FIX: Call correct store method ***
         if (Object.keys(filters).length > 0) {
-            this._store.filter = this._store.filter.withPatch(filters);
-            this._store.pagination.currentPage = 1;
+            this._store.setFilters(filters); // This will reset page and load
+        } else {
+            await this._store.loadWorklist();
         }
-        const result = await this._store.loadWorklistPage();
-        return result.ok ? Result.ok(this.snapshot()) : Result.fail(result.error);
+        // *** END FIX ***
+
+        return this._store.error ?
+            Result.fail(new Error(this._store.error)) :
+            Result.ok(this.snapshot());
     }
 
     startPolling(intervalMs = 15000) {
@@ -30,10 +35,9 @@ export class WorklistFacade {
             this.stopPolling();
         }
         this._pollHandle = this.poll.start("worklist", intervalMs, async () => {
-            // CORRECTED: Use the correct store action name 'loadWorklistPage'
-            await this._store.loadWorklistPage();
+            // *** FIX: Call correct store method ***
+            await this._store.loadWorklist();
         });
-        // Removed console.log for production readiness
         return true;
     }
 
@@ -41,7 +45,6 @@ export class WorklistFacade {
         if (this._pollHandle) {
             this.poll.stop("worklist");
             this._pollHandle = null;
-            // Removed console.log for production readiness
             return true;
         }
         return false;
@@ -49,40 +52,53 @@ export class WorklistFacade {
 
     snapshot() {
         return {
-            filter: { ...this._store.filter },
+            // *** FIX: Use correct store state/getters ***
+            filter: { ...this._store.filters.toPlainObject() },
             items: [...this._store.items],
             pagination: { ...this._store.pagination },
             loading: this._store.loading,
             error: this._store.error,
             selection: [...this._store.selection],
+            // *** END FIX ***
         };
     }
 
     async applyFilterPatch(patch) {
-        return await this._store.applyFilterPatch(patch);
+        // *** FIX: Call correct store method ***
+        await this._store.setFilters(patch);
+        return this.snapshot();
     }
 
     async resetFilter() {
-        return await this._store.resetFilter();
+        // *** FIX: Call correct store method ***
+        await this._store.handleResetFilter();
+        return this.snapshot();
     }
 
     async goToPage(pageNumber) {
-        return await this._store.goToPage(pageNumber);
+        // *** FIX: Call correct store method ***
+        await this._store.setPage(pageNumber);
+        return this.snapshot();
     }
 
     async changePageSize(size) {
-        return await this._store.changePageSize(size);
+        // *** FIX: Call correct store method ***
+        await this._store.setPageSize(size);
+        return this.snapshot();
     }
 
     toggleSelection(orderId) {
+        // *** FIX: Call correct store method ***
         this._store.toggleSelection(orderId);
     }
 
     clearSelection() {
+        // *** FIX: Call correct store method ***
         this._store.clearSelection();
     }
 
     getSelection() {
+        // *** FIX: Read from state ***
         return [...this._store.selection];
     }
 }

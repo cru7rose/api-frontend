@@ -1,14 +1,18 @@
 // ============================================================================
-// Frontend: Update LogService.js
+// Frontend: Update LogService.js (Supersedes previous version)
 // FILE: src/services/LogService.js
-// REASON: FIX: Corrected the import path for the 'Api' base class.
+// REASON: FIX: Removed incorrect 'extends Api'.
+//         Import 'apiClient' (default export) instead of named 'Api'.
+//         Added constructor to set 'this.client'.
+//         Added 'normalizeError' helper method (stubbed).
 // ============================================================================
-import { Api } from '@/services/Api.js'; // *** THIS IS THE FIX ***
+import apiClient from '@/services/Api.js'; // *** THIS IS THE FIX ***
 import { Result } from '@/domain/Result';
 
-export class LogService extends Api {
+export class LogService { // *** REMOVED 'extends Api' ***
     constructor() {
-        super();
+        // *** ADDED CONSTRUCTOR ***
+        this.client = apiClient;
     }
 
     /**
@@ -44,4 +48,11 @@ export class LogService extends Api {
             return Result.fail(error);
         }
     }
+
+    // *** ADDED HELPER (Stubbed) ***
+    normalizeError(e, defaultMessage) {
+        const error = e.response?.data?.error || e.response?.data?.message || e.message || defaultMessage;
+        return new Error(error);
+    }
+    // *** END ADDED HELPER ***
 }

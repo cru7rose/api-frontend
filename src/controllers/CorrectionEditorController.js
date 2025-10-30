@@ -1,15 +1,8 @@
 // ============================================================================
-// Frontend: Update CorrectionEditorController
+// Frontend: Update CorrectionEditorController (Supersedes previous version)
 // FILE: src/controllers/CorrectionEditorController.js
-// REASON: Populate 'name' and 'alias' fields in editedPickup/editedDelivery
-//         state upon load, acceptSuggestion, and useOriginal.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-/**
- * ARCHITECTURE: CorrectionEditorController orchestrates the "side-by-side diff" editor.
- * It follows the manifesto by isolating all IO and decision logic away from the component tree.
- * REFACTORED: Now accepts a GeocodeWithCacheController.
- * UPDATED: Now maps 'name' and 'alias' into the editable state.
- */
 import { Address } from "@/domain/WorkbenchModels";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
@@ -20,7 +13,7 @@ export class CorrectionEditorController {
     this.api = api;
     this.geocoder = geocoder instanceof GeocodeWithCacheController ? geocoder : null;
     if (!this.geocoder) {
-      console.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
+      log.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
     }
     this.orderId = null;
     this.detail = null;
@@ -169,7 +162,6 @@ export class CorrectionEditorController {
   }
 
   // --- DEPRECATED SAVE METHODS ---
-  // Kept for facade compatibility
   async saveAcceptSuggestion(side) {
     log.warn("DEPRECATED: saveAcceptSuggestion called. Use SaveFlowController.");
     return Result.fail(new Error("Save logic is deprecated."));
@@ -209,9 +201,10 @@ export class CorrectionEditorController {
   }
 }
 
-// Basic logger shim
+// *** ADDED LOG SHIM ***
 const log = {
   info: (...args) => console.info(...args),
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***

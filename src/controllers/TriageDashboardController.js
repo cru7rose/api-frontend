@@ -1,9 +1,9 @@
 // ============================================================================
-// Frontend: Fix TriageDashboardController
-// FILE: src/controllers/TriageDashboardController.js (Supersedes previous version)
-// REASON: Remove call to non-existent 'getRecentBatches' method.
-// ============================================================================
+// Frontend: Fix TriageDashboardController (Supersedes previous version)
 // FILE: src/controllers/TriageDashboardController.js
+// REASON: Remove call to non-existent 'getRecentBatches' method
+//         which is not implemented in AddressExceptionApi.js.
+// ============================================================================
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
 import { PollingService } from "@/services/PollingService";
@@ -15,7 +15,7 @@ export class TriageDashboardController {
     this.loading = false;
     this.error = null;
     this.kpis = null;
-    this.recentBatches = [];
+    this.recentBatches = []; // Keep property but will remain empty
     this.pendingByErrorType = [];
     this._pollHandles = [];
   }
@@ -27,12 +27,12 @@ export class TriageDashboardController {
     // *** MODIFICATION: Removed getRecentBatches() call ***
     const [kpiRes, typeRes] = await Promise.all([
       this.api.getTriageKpis(),
-      // this.api.getRecentBatches(), // <-- This line should be gone
-      this.api.getPendingByErrorType(), // <-- This line is correct
+      // this.api.getRecentBatches(), // <-- This line is REMOVED
+      this.api.getPendingByErrorType(),
     ]);
     // *** END MODIFICATION ***
 
-    // Safety check for kpiRes (solves 'items' of undefined)
+    // Safety check for kpiRes
     if (!kpiRes.ok) return this._fail(kpiRes.error);
     if (!kpiRes.value) {
       console.warn("TriageDashboardController: getTriageKpis returned OK but value is null/undefined.");
@@ -42,7 +42,7 @@ export class TriageDashboardController {
     }
 
     // Safety check for batchRes (Set to empty array)
-    this.recentBatches = [];
+    this.recentBatches = []; // Will not be populated
 
     // Safety check for typeRes
     if (!typeRes.ok) return this._fail(typeRes.error);
@@ -58,16 +58,16 @@ export class TriageDashboardController {
       const r = await this.api.getTriageKpis();
       if (r.ok && r.value) this.kpis = r.value;
     });
+
     // *** MODIFICATION: Removed polling for batches ***
-    // const b = this.polling.start("batches", intervalMs, async () => {
-    //   const r = await this.api.getRecentBatches();
-    //   if (r.ok) this.recentBatches = Array.isArray(r.value) ? r.value : [];
-    // });
+    // const b = this.polling.start(...)
     // *** END MODIFICATION ***
+
     const e = this.polling.start("errorsByType", intervalMs, async () => {
       const r = await this.api.getPendingByErrorType();
       if (r.ok) this.pendingByErrorType = Array.isArray(r.value) ? r.value : [];
     });
+
     this._pollHandles = [k, e]; // Removed 'b' from handles
     return this._pollHandles.slice();
   }

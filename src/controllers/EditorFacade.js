@@ -1,15 +1,8 @@
 // ============================================================================
-// Frontend: Update EditorFacade.js
+// Frontend: Update EditorFacade.js (Supersedes previous version)
 // FILE: src/controllers/EditorFacade.js
-// REASON: Draw markers and route on load. Pass 'side' to preview controller.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-/**
- * ARCHITECTURE: EditorFacade wraps CorrectionEditorController and adds map preview conveniences.
- * It follows the manifesto by exposing intent methods used by the Editor view without leaking internals.
- * REFACTORED:
- * - 'load' now draws both markers and the OSRM route on success.
- * - 'accept...Suggestion' methods now pass the correct 'side' to the previewer.
- */
 import { Result } from "@/domain/Result";
 import { SuggestionPreviewController } from "@/controllers/SuggestionPreviewController";
 
@@ -22,7 +15,6 @@ export class EditorFacade {
 
   async load(orderId) {
     const loadResult = await this.ctrl.loadOrder(orderId);
-
     // --- NEW: Draw markers and route on load ---
     if (loadResult.ok && this.preview) {
       try {
@@ -103,7 +95,6 @@ export class EditorFacade {
     // Now focus the map on the newly geocoded point
     const snap = this.ctrl.snapshot();
     const addr = (side === 'pickup') ? snap.editedPickup : snap.editedDelivery;
-
     if (this.preview) {
       await this.preview.policy.focusAddress(side, addr);
     }
@@ -138,9 +129,10 @@ export class EditorFacade {
   }
 }
 
-// Basic logger shim
+// *** ADDED LOG SHIM ***
 const log = {
   info: (...args) => console.info(...args),
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***

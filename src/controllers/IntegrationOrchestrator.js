@@ -1,9 +1,8 @@
 // ============================================================================
-// Frontend: Update IntegrationOrchestrator (Final Version)
+// Frontend: Update IntegrationOrchestrator (Supersedes previous version)
 // FILE: src/controllers/IntegrationOrchestrator.js
-// REASON: Instantiate GeocodeWithCacheController correctly.
+// REASON: Added 'log' shim for console logging.
 // ============================================================================
-// FILE: src/controllers/IntegrationOrchestrator.js
 import { OrdersQueueService } from "@/services/OrdersQueueService";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
 import { PollingService } from "@/services/PollingService";
@@ -63,12 +62,12 @@ export class IntegrationOrchestrator {
       // Geocoder is handled by the injected _geocodeController
       placesAdapter = this._geoRuntime.placesAdapter(); // May return null
       if(placesAdapter) {
-        console.info("[IntegrationOrchestrator] Places adapter obtained for EditorFacade.");
+        log.info("[IntegrationOrchestrator] Places adapter obtained for EditorFacade.");
       } else {
-        console.info("[IntegrationOrchestrator] Places adapter is null/unavailable. Editor hints disabled.");
+        log.info("[IntegrationOrchestrator] Places adapter is null/unavailable. Editor hints disabled.");
       }
     } catch(e) {
-      console.error("IntegrationOrchestrator: Failed to get configured places adapter from GeoRuntime:", e.message);
+      log.error("IntegrationOrchestrator: Failed to get configured places adapter from GeoRuntime:", e.message);
       // Continue with null adapter
     }
 
@@ -85,3 +84,11 @@ export class IntegrationOrchestrator {
     return this._editor;
   }
 }
+
+// *** ADDED LOG SHIM ***
+const log = {
+  info: (...args) => console.info(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
+};
+// *** END LOG SHIM ***

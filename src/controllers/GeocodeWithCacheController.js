@@ -1,5 +1,8 @@
+// ============================================================================
+// Frontend: Fix GeocodeWithCacheController (Supersedes previous version)
 // FILE: src/controllers/GeocodeWithCacheController.js
-// MODIFIED - Request adapter without specifying provider
+// REASON: Added 'log' shim for console logging.
+// ============================================================================
 import { AddressGeocodeCache } from "@/services/AddressGeocodeCache";
 import { QuotaBackoffService } from "@/services/QuotaBackoffService";
 
@@ -17,8 +20,7 @@ export class GeocodeWithCacheController {
         this.geoRuntime = geoRuntime;
         this.cache = cache;
         this.backoff = backoff;
-        this._geocoderAdapter = null;
-        // Lazy load
+        this._geocoderAdapter = null; // Lazy load
     }
 
     _getAdapter() {
@@ -46,7 +48,6 @@ export class GeocodeWithCacheController {
             return hit;
         }
         log.debug("[GeocodeCache] Cache miss for address:", address);
-
         // *** FIX: Ensure adapter is requested *before* task execution if not already loaded ***
         try {
             this._getAdapter();
@@ -73,7 +74,9 @@ export class GeocodeWithCacheController {
     }
 }
 
+// *** ADDED LOG SHIM ***
 const log = {
     debug: (...args) => console.debug(...args),
     error: (...args) => console.error(...args),
 };
+// *** END LOG SHIM ***

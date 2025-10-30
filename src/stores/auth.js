@@ -1,15 +1,16 @@
 // ============================================================================
-// Frontend: Add auth.js store
-// FILE: src/stores/auth.js (NEW FILE)
-// REASON: This file was missing, causing the build to fail.
-//         It manages user authentication state (token, username, roles).
+// Frontend: Fix auth.js store (Supersedes previous version)
+// FILE: src/stores/auth.js
+// REASON: Corrects the import for the API client (default export)
+//         and uses the correct method for setting the auth header
+//         on the axios instance.
 // ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { AuthApi } from '@/services/AuthApi';
 // *** THIS IS THE FIX ***
-import { Api } from '@/services/Api.js'; // <-- Add the .js extension
+import apiClient from '@/services/Api.js'; // <-- Import the default export
 // *** END FIX ***
 
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -54,8 +55,13 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
         localStorage.setItem(USERNAME_KEY, user);
 
-        // Set the auth header on the global API instance
-        Api.setAuthHeader(token);
+        // --- FIX: Set header on the imported axios instance ---
+        if (token) {
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        } else {
+            delete apiClient.defaults.headers.common['Authorization'];
+        }
+        // --- END FIX ---
 
         authError.value = null;
     }
@@ -70,8 +76,9 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
 
-        // Clear the auth header
-        Api.setAuthHeader(null);
+        // --- FIX: Clear the auth header ---
+        delete apiClient.defaults.headers.common['Authorization'];
+        // --- END FIX ---
 
         authError.value = null;
     }
@@ -112,7 +119,9 @@ export const useAuthStore = defineStore('auth', () => {
             if (decoded && decoded.exp * 1000 > Date.now()) {
                 // Token is valid and not expired
                 roles.value = decoded.roles || [];
-                Api.setAuthHeader(token);
+                // --- FIX: Set header on the imported axios instance ---
+                apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                // --- END FIX ---
                 authError.value = null;
             } else {
                 // Token is expired or invalid
