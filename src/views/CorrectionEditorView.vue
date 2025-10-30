@@ -105,10 +105,11 @@ import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
 import { MapController } from "@/controllers/MapController.js";
 import { EditorFacade } from "@/controllers/EditorFacade.js";
 import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
+// *** REMOVED IdempotentSaveController ***
 import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
 import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
 import { Address } from '@/domain/WorkbenchModels.js';
+import { AddressExceptionApi } from "@/services/AddressExceptionApi.js"; // *** ADDED IMPORT ***
 
 // === Injections ===
 const orchestrator = inject("orchestrator");
@@ -158,8 +159,10 @@ onMounted(async () => {
   editorFacade = orchestrator.getEditor(null);
 
   // 2. Initialize Save Controllers
-  const saveController = new IdempotentSaveController();
-  saveFlow = new SaveFlowController(editorFacade, worklistStore, saveController);
+  // *** THIS IS THE FIX for the 'deprecated' warning ***
+  const api = new AddressExceptionApi();
+  saveFlow = new SaveFlowController(editorFacade, worklistStore, api);
+  // *** END FIX ***
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
 
   // 3. Load Order Data (this will trigger the 'watch' block to init the map)
@@ -174,25 +177,23 @@ onUnmounted(() => {
   }
 });
 
-// *** FIX: Use a watch to initialize the map ***
-// This watch fires when the 'mapContainer' ref changes.
-// 1. On load, it's null.
-// 2. After loadOrderData() sets state.detail, Vue renders the <div>.
-// 3. Vue attaches the <div> to the ref, so mapContainer.value becomes non-null.
-// 4. This 'watch' block fires, and we can safely initialize the map.
+// *** FIX: This is the correct way to watch the ref ***
 watch(mapContainer, async (newMapEl) => {
-  if (newMapEl && !mapController) { // Only init if we have the element AND map isn't already initted
+  // 1. If the element (newMapEl) exists and the controller (mapController) doesn't...
+  if (newMapEl && !mapController) {
     log.info("Map container is now in DOM. Initializing MapController...");
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
+
+      // 2. Initialize the map controller with the real DOM element
       await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
 
-      // Inject the map into the facade
+      // 3. Inject the *initialized* map into the facade
       editorFacade.preview = orchestrator.createPreviewController(mapController);
       log.info("MapController initialized and injected into facade.");
 
-      // Now draw the initial route
+      // 4. Now that the map is ready, draw the initial route
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -201,21 +202,24 @@ watch(mapContainer, async (newMapEl) => {
         log.info("Initial route and markers drawn.");
       }
 
-      // And fetch route stats
+      // 5. Fetch route stats
       await refreshRouteInfo();
 
     } catch (err) {
       log.error("Failed to initialize MapController in watch block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
-  } else if (!newMapEl && mapController) {
-    // This happens on unmount/reload
+  }
+  // 6. If the element is gone (component unmounted) and controller *does* exist...
+  else if (!newMapEl && mapController) {
     log.info("Map container removed. Destroying map controller.");
     await mapController.destroy();
     mapController = null;
     if (editorFacade) editorFacade.preview = null;
   }
 });
+// *** END FIX ***
+
 
 // === Methods ===
 async function loadOrderData() {
@@ -232,6 +236,9 @@ async function loadOrderData() {
 
   // Set detail to null to hide the old view and unmount the mapContainer ref
   state.detail = null;
+
+  // Wait for the DOM to update (v-if="state.detail" is now false)
+  await nextTick();
 
   const result = await editorFacade.load(orderId.value);
 

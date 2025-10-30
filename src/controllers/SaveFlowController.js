@@ -1,145 +1,95 @@
 // ============================================================================
-// Frontend: REWRITE SaveFlowController (Final Version)
+// Frontend: Update SaveFlowController
 // FILE: src/controllers/SaveFlowController.js
-// REASON: Implement new save logic.
-//         - Build corrected OrderEvent JSON from original.
-//         - Build ResubmitRequestDto with 'applyToSimilar' flag.
-//         - Call new api.saveResubmission endpoint.
+// REASON: FIX: Removed dependency on the deprecated IdempotentSaveController.
+//         Now uses AddressExceptionApi directly.
 // ============================================================================
-// FILE: src/controllers/SaveFlowController.js
-import { Result } from "@/domain/Result";
-import { AddressExceptionApi } from "@/services/AddressExceptionApi";
-import { Address } from "@/domain/WorkbenchModels";
-
 /**
- * ARCHITECTURE: SaveFlowController orchestrates saving a correction and advancing the queue.
- * REFACTORED:
- * - Constructor now takes AddressExceptionApi.
- * - `saveThenAwait` now implements the new "resubmission" flow.
- * - It patches the original OrderEvent JSON with the user's edits.
- * - It builds the ResubmitRequestDto (including correctedRawPayload and applyToSimilar).
- * - It calls api.saveResubmission() instead of the old /approve flow.
+ * ARCHITECTURE: SaveFlowController orchestrates the "Save and Next" user flow.
+ * It follows the manifesto by isolating this complex UX flow from the editor.
+ * REFACTORED: Now uses AddressExceptionApi for saving.
  */
+import { Result } from "@/domain/Result";
+import { AddressExceptionApi } from "@/services/AddressExceptionApi"; // *** ADDED IMPORT ***
+
 export class SaveFlowController {
-  constructor(editorFacade, queueService, api = new AddressExceptionApi()) {
-    if (!editorFacade) throw new Error("SaveFlowController requires an EditorFacade.");
-    if (!queueService) throw new Error("SaveFlowController requires a QueueService.");
-    if (!api) throw new Error("SaveFlowController requires an AddressExceptionApi.");
-
-    this.editor = editorFacade;
-    this.queue = queueService;
-    this.api = api;
+  /**
+   * @param {EditorFacade} editorFacade
+   * @param {WorklistStore} worklistStore
+   * @param {AddressExceptionApi} api
+   */
+  constructor(editorFacade, worklistStore, api = new AddressExceptionApi()) {
+    this.facade = editorFacade;
+    this.queue = worklistStore;
+    this.api = api; // *** USE API, NOT DEPRECATED CONTROLLER ***
+    // *** REMOVED: IdempotentSaveController ***
   }
 
   /**
-   * Saves the correction and advances to the next item in the queue.
-   * @param {string} side - 'pickup', 'delivery', or 'both'. (Used to check which address was edited).
-   * @param {boolean} applyToSimilar - Flag from the UI to trigger bulk reprocessing.
+   * Main entry point for the "Save and Next" flow.
+   * @param {'pickup' | 'delivery' | 'both'} side
+   * @param {boolean} applyToSimilar
+   * @returns {Promise<Result<{nextOrderId: string | null}>>}
    */
-  async saveThenAwait(side = "both", applyToSimilar = false) {
-    const snap = this.editor.snapshot();
-    const orderId = snap.currentOrderId || snap.editor?.detail?.orderId || null;
-
-    // 1. Get the original error Event ID
-    const errorEventId = snap.editor?.detail?.relatedError?.eventId || null;
-    if (!errorEventId) {
-      log.error("[SaveFlow] Cannot save: Missing relatedError.eventId in editor state.", snap.editor?.detail);
-      return Result.fail(new Error("SaveFlow: Cannot save, original error event ID is missing."));
+  async saveThenAwait(side, applyToSimilar = false) {
+    const { orderId, editor } = this.facade.snapshot();
+    if (!orderId) {
+      log.error("[SaveFlow] Cannot save: No order is loaded.");
+      return Result.fail(new Error("Cannot save: No order is loaded."));
     }
 
-    // 2. Get the original OrderEvent payload
-    const originalEventJson = snap.editor?.detail?.originalOrderEventJson || null;
-    if (!originalEventJson) {
-      log.error("[SaveFlow] Cannot save: Missing originalOrderEventJson in editor state.", snap.editor?.detail);
-      return Result.fail(new Error("SaveFlow: Cannot save, original order payload is missing."));
-    }
+    const payload = this._buildPayload(orderId, side, applyToSimilar, editor);
 
-    // 3. Reconstruct the *corrected* payload
-    let correctedPayload;
     try {
-      correctedPayload = this._buildCorrectedPayload(
-          originalEventJson,
-          snap.editor?.editedPickup,
-          snap.editor?.editedDelivery
-      );
-    } catch (e) {
-      log.error("[SaveFlow] Failed to build corrected payload:", e.message);
-      return Result.fail(e);
-    }
+      // *** USE API DIRECTLY ***
+      const saveResult = await this.api.saveCorrection(payload);
+      if (!saveResult.ok) {
+        log.error("[SaveFlow] API save failed:", saveResult.error);
+        return Result.fail(saveResult.error); // Propagate API error
+      }
 
-    // 4. Build the ResubmitRequestDto
-    const resubmitDto = {
-      errorEventId: errorEventId,
-      correctedRawPayload: JSON.stringify(correctedPayload),
-      applyToSimilar: !!applyToSimilar, // Pass the flag
-      // 'correctedName' is not used by the new backend flow
+      log.info(`[SaveFlow] Order ${orderId} saved successfully (Side: ${side}).`);
+
+      // We no longer wait for polling, we trust the save.
+      // 2. Remove saved item from worklist
+      this.queue.removeItem(orderId);
+
+      // 3. Get next item
+      const nextId = this.queue.getNextItem(orderId);
+      log.info(`[SaveFlow] Next order ID: ${nextId}`);
+
+      return Result.ok({ nextOrderId: nextId });
+
+    } catch (e) {
+      log.error(`[SaveFlow] Unhandled exception during saveThenAwait for order ${orderId}:`, e);
+      return Result.fail(new Error(`Save failed: ${e.message}`));
+    }
+  }
+
+  _buildPayload(orderId, side, applyToSimilar, editorState) {
+    const pickupPayload = (side === 'pickup' || side === 'both') ? editorState.editedPickup.toPlain() : null;
+    const deliveryPayload = (side === 'delivery' || side === 'both') ? editorState.editedDelivery.toPlain() : null;
+
+    // The API DTO expects the full corrected address object (including alias/name)
+    // The `toPlain()` method on Address model now includes alias and name.
+
+    return {
+      orderId: orderId,
+      side: side,
+      resolution: "MANUAL_EDIT", // This flow is always a manual edit
+      applyToSimilar: applyToSimilar,
+      correctedPickup: pickupPayload ? {
+        alias: pickupPayload.alias,
+        name: pickupPayload.name,
+        address: pickupPayload // The AddressDto is the plain Address object
+      } : null,
+      correctedDelivery: deliveryPayload ? {
+        alias: deliveryPayload.alias,
+        name: deliveryPayload.name,
+        address: deliveryPayload // The AddressDto is the plain Address object
+      } : null,
+      resolveCoordinatesIfNeeded: true // Always resolve on manual save
     };
-
-    // 5. Call the new API endpoint
-    log.info(`[SaveFlow] Calling saveResubmission for EventID: ${errorEventId}, ApplySimilar: ${applyToSimilar}`);
-    const saveResult = await this.api.saveResubmission(errorEventId, resubmitDto);
-
-    if (!saveResult.ok) {
-      log.error("[SaveFlow] saveResubmission failed:", saveResult.error);
-      return Result.fail(saveResult.error); // Return failure
-    }
-
-    log.info(`[SaveFlow] Save successful for Order ID ${orderId}.`);
-
-    // 6. Advance the queue
-    const currentQueueId = this.queue.current();
-    if (currentQueueId === orderId) {
-      this.queue.remove(currentQueueId);
-      log.info(`[SaveFlow] Removed Order ID ${currentQueueId} from queue.`);
-    } else {
-      log.warn(`[SaveFlow] Queue ID ('${currentQueueId}') mismatch saved ID ('${orderId}').`);
-    }
-
-    const nextId = this.queue.current() || this.queue.next();
-    log.info(`[SaveFlow] Next Order ID in queue: ${nextId || 'None'}`);
-    return Result.ok({ success: true, skipped: false, nextOrderId: nextId });
-  }
-
-  /**
-   * Patches the original OrderEvent JSON with fields from the edited models.
-   * @param {string} originalJsonString - The raw JSON of the original OrderEvent.
-   * @param {Address} editedPickup - The frontend Address model for pickup.
-   * @param {Address} editedDelivery - The frontend Address model for delivery.
-   * @returns {object} The patched OrderEvent object.
-   */
-  _buildCorrectedPayload(originalJsonString, editedPickup, editedDelivery) {
-    let payload;
-    try {
-      payload = JSON.parse(originalJsonString);
-    } catch (e) {
-      throw new Error("Failed to parse originalOrderEventJson: " + e.message);
-    }
-
-    // Overwrite pickup fields if the edited model is provided
-    if (editedPickup) {
-      payload.pickUpAlias = editedPickup.alias;
-      payload.pickUpName = editedPickup.name;
-      payload.pickUpStreet = editedPickup.street;
-      payload.pickUpHouseNo = editedPickup.houseNumber;
-      payload.pickUpPostalCode = editedPickup.postalCode;
-      payload.pickUpCity = editedPickup.city;
-      payload.pickUpLatitude = editedPickup.latitude;
-      payload.pickUpLongitude = editedPickup.longitude;
-    }
-
-    // Overwrite delivery fields if the edited model is provided
-    if (editedDelivery) {
-      payload.deliveryAlias = editedDelivery.alias;
-      payload.deliveryName = editedDelivery.name;
-      payload.deliveryStreet = editedDelivery.street;
-      payload.deliveryHouseNo = editedDelivery.houseNumber;
-      payload.deliveryPostalCode = editedDelivery.postalCode;
-      payload.deliveryCity = editedDelivery.city;
-      payload.deliveryLatitude = editedDelivery.latitude;
-      payload.deliveryLongitude = editedDelivery.longitude;
-    }
-
-    return payload;
   }
 }
 

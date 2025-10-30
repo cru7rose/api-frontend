@@ -1,10 +1,3 @@
-// ============================================================================
-// Frontend: Update main.js
-// REASON: Default OSRM routing URL to the proxy path '/osrm'.
-// REASON: Fix Nominatim default URL to include /search.
-// REASON: Provide geoRuntime to the Vue app instance.
-// ============================================================================
-// FILE: src/main.js
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "@/App.vue";
@@ -13,35 +6,14 @@ import { AppBootstrapController } from "@/controllers/AppBootstrapController";
 import { AuthController } from "@/controllers/AuthController";
 import { GeoRuntime } from "@/adapters/GeoRuntime";
 import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
+
+// *** DODAJ TEN IMPORT STYLÓW ***
 import '@/assets/theme.css';
+// *** KONIEC IMPORTU ***
 
 (async () => {
     const pinia = createPinia();
-    const auth = new AuthController();
-    auth.hydrateFromStorage();
-
-    const bootstrap = new AppBootstrapController();
-    const boot = await bootstrap.bootstrap();
-    const config = boot.config || {};
-    const health = boot.health || { ok: false };
-
-    // 3. Configure GeoRuntime
-    const geoProviderConfig = {
-        map: (config?.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
-        geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
-        places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
-        nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
-
-        // Use the proxy path, not a direct IP
-        // *** FIX: Add /search to the default path ***
-        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search',
-
-        // *** THIS IS THE FIX FOR "Routing: None" ***
-        // It tells GeoRuntime to use the '/osrm' proxy path
-        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
-    };
-    const googleKey =
-        config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
+    // ... (reszta kodu bez zmian) ...
 
     const geoRuntime = new GeoRuntime(geoProviderConfig);
 
@@ -68,7 +40,7 @@ import '@/assets/theme.css';
     app.provide("auth", auth);
     app.provide("config", config);
     app.provide("health", health);
-    app.provide("geoRuntime", geoRuntime); // <-- Provide geoRuntime
+    app.provide("geoRuntime", geoRuntime);
 
     app.mount("#app");
 })();
