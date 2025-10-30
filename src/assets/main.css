@@ -1,8 +1,7 @@
-/* Tailwind entry */
-@tailwind base;
-@tailwind components;
-
-/* DANXILS Yellow–Blue theme layer */
+/* Import FIRST to satisfy PostCSS rule */
 @import "./theme.css";
 
+/* Then Tailwind layers */
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
