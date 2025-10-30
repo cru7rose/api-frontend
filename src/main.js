@@ -4,6 +4,8 @@ import { createRouter } from './router';
 import { createPinia } from 'pinia';
 import './assets/main.css';
 import { createGeoRuntime } from '@/geo/runtime';
+import '@/assets/main.css';
+import '@/assets/theme.css';
 
 const app = createApp(App);
 app.use(createPinia());

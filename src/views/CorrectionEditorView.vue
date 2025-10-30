@@ -1,292 +1,388 @@
-<script setup>
-import { ref, onMounted, onUnmounted, computed, watch, nextTick, inject } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { Address } from '@/domain/WorkbenchModels';
-import { AddressFormatterService } from '@/services/AddressFormatterService';
-import { AddressExceptionApi } from '@/services/AddressExceptionApi';
-import { GeocodeWithCacheController } from '@/controllers/GeocodeWithCacheController';
-import { MapController } from '@/controllers/MapController';
-import StatusBadge from '@/components/common/StatusBadge.vue';
-import ActionButton from '@/components/common/ActionButton.vue';
-import AddressDisplay from '@/components/editor/AddressDisplay.vue';
-import AddressEditor from '@/components/editor/AddressEditor.vue';
-
-const geoRuntime = inject('geoRuntime', null);
-const showNotification = inject('showNotification', null);
-
-const route = useRoute();
-const router = useRouter();
-
-const orderId = ref(route.params.id);
-const isLoading = ref(true);
-const error = ref(null);
-
-const formatter = new AddressFormatterService();
-const api = new AddressExceptionApi();
-let mapController = null;
-let geocodeController = null;
-let editorFacade = null;
-
-const orderDetail = ref(null);
-const editedPickup = ref(new Address());
-const editedDelivery = ref(new Address());
-
-const hasPickupChanged = computed(() =>
-    orderDetail.value
-        ? JSON.stringify(orderDetail.value.originalPickup ?? {}) !== JSON.stringify(editedPickup.value ?? {})
-        : false);
-const hasDeliveryChanged = computed(() =>
-    orderDetail.value
-        ? JSON.stringify(orderDetail.value.originalDelivery ?? {}) !== JSON.stringify(editedDelivery.value ?? {})
-        : false);
-const hasAnyChanged = computed(() => hasPickupChanged.value || hasDeliveryChanged.value);
-
-const mapContainer = ref(null);
-
-const streetSuggestions = ref([]);
-const streetLoading = ref(false);
-let streetDebounceTimer = null;
-
-const safeNum = (v) => (v === 0 || (typeof v === 'number' && Number.isFinite(v))) ? v : null;
-const hasLatLon = (obj) => obj && safeNum(+obj.latitude) !== null && safeNum(+obj.longitude) !== null;
-
-const loadOrder = async (id) => {
-  isLoading.value = true;
-  error.value = null;
-  try {
-    if (!geoRuntime) throw new Error('Geo runtime is not available. Did you provide it in main.ts?');
-    if (!editorFacade) throw new Error('Editor facade not initialized.');
-
-    const result = await editorFacade.load(id);
-    if (!result?.ok) throw (result?.error ?? new Error('Load failed.'));
-
-    const detail = result.value || {};
-    orderDetail.value = detail;
-
-    editedPickup.value = new Address(detail.originalPickup || {});
-    editedDelivery.value = new Address(detail.originalDelivery || {});
-
-    await nextTick();
-    if (mapContainer.value && !mapController?._ready) {
-      await mapController.init(mapContainer.value);
-    }
-    await updateMapMarkers();
-  } catch (e) {
-    console.error(e);
-    error.value = e?.message || 'Failed to load order details.';
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const updateMapMarkers = async () => {
-  if (!mapController || !mapController._ready) return;
-
-  const pk = editedPickup.value || {};
-  const dl = editedDelivery.value || {};
-
-  let pkPos = null, dlPos = null;
-
-  if (hasLatLon(pk)) {
-    pkPos = { lat: +pk.latitude, lon: +pk.longitude };
-    await mapController.updatePickupMarker(pkPos.lat, pkPos.lon);
-  } else { mapController.clearPickupMarker?.(); }
-
-  if (hasLatLon(dl)) {
-    dlPos = { lat: +dl.latitude, lon: +dl.longitude };
-    await mapController.updateDeliveryMarker(dlPos.lat, dlPos.lon);
-  } else { mapController.clearDeliveryMarker?.(); }
-
-  if (pkPos && dlPos) await mapController.drawRouteAndFit(pkPos, dlPos);
-  else if (pkPos)     await mapController.setCenter(pkPos.lat, pkPos.lon, 14);
-  else if (dlPos)     await mapController.setCenter(dlPos.lat, dlPos.lon, 14);
-};
-
-const handleGeocode = async (side) => {
-  const model = side === 'pickup' ? editedPickup.value : editedDelivery.value;
-  const result = await geocodeController.geocode(model);
-  if (result && Number.isFinite(+result.latitude) && Number.isFinite(+result.longitude)) {
-    model.latitude = +result.latitude;
-    model.longitude = +result.longitude;
-    showNotification?.(`Geocode successful for ${side}`, 'success');
-    await updateMapMarkers();
-  } else {
-    showNotification?.(`Geocode failed for ${side}.`, 'error');
-  }
-};
-
-const onStreetInput = (evt, side) => {
-  const model = side === 'pickup' ? editedPickup.value : editedDelivery.value;
-  const query = (evt?.target?.value || '').trim();
-  if (query.length < 3 || !model?.postalCode || !model?.city) {
-    streetSuggestions.value = [];
-    return;
-  }
-  streetLoading.value = true;
-  clearTimeout(streetDebounceTimer);
-  streetDebounceTimer = setTimeout(async () => {
-    try {
-      const res = await api.getStreetsForPostalCode(model.postalCode, model.city);
-      const list = res?.ok ? (res.value || []) : [];
-      streetSuggestions.value = list
-          .filter(s => (s?.value || '').toLowerCase().includes(query.toLowerCase()))
-          .slice(0, 5);
-    } catch {
-      streetSuggestions.value = [];
-    } finally {
-      streetLoading.value = false;
-    }
-  }, 300);
-};
-
-const selectStreetSuggestion = (s, side) => {
-  if (!s) return;
-  if (side === 'pickup') editedPickup.value.street = s.value;
-  else editedDelivery.value.street = s.value;
-  streetSuggestions.value = [];
-};
-
-const handleSave = async (side) => {
-  isLoading.value = true;
-  try {
-    const payload = {
-      orderId: orderId.value,
-      side,
-      resolution: 'MANUAL_EDIT',
-      applyToSimilar: false,
-      correctedPickup: (side === 'pickup' || side === 'both') ? editedPickup.value : null,
-      correctedDelivery: (side === 'delivery' || side === 'both') ? editedDelivery.value : null,
-    };
-    const res = await api.saveCorrection(payload);
-    if (res?.ok) {
-      showNotification?.('Save successful!', 'success');
-      await loadOrder(orderId.value);
-    } else {
-      const msg = res?.error?.message || 'Save failed';
-      showNotification?.(msg, 'error'); error.value = msg;
-    }
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const handleResubmit = async () => {
-  isLoading.value = true;
-  try {
-    const res = await api.resubmitOrder(orderId.value);
-    if (res?.ok) {
-      showNotification?.('Resubmitted for verification.', 'info');
-      await loadOrder(orderId.value);
-    } else {
-      showNotification?.(res?.error?.message || 'Resubmit failed', 'error');
-    }
-  } finally { isLoading.value = false; }
-};
-
-/* Lifecycle */
-onMounted(async () => {
-  if (!geoRuntime) { error.value = 'Geo runtime is not provided. Please provide `geoRuntime` in main.ts.'; return; }
-
-  mapController = new MapController(geoRuntime.mapAdapter());
-  geocodeController = new GeocodeWithCacheController(geoRuntime);
-
-  const { IntegrationOrchestrator } = await import('@/controllers/IntegrationOrchestrator');
-  const orchestrator = new IntegrationOrchestrator(geoRuntime, mapController);
-  editorFacade = orchestrator.getEditor();
-
-  await loadOrder(orderId.value);
-});
-
-onUnmounted(() => {
-  try { mapController?.destroy?.(); } catch {}
-  clearTimeout(streetDebounceTimer);
-});
-
-watch(() => route.params.id, async (id) => {
-  orderId.value = id;
-  await loadOrder(id);
-});
-</script>
-
 <template>
-  <div class="mx-auto max-w-[1400px] px-4 py-6">
-    <div class="flex items-center justify-between gap-3 mb-6">
-      <div>
-        <h1 class="text-2xl font-semibold text-slate-900">Correction Editor</h1>
-        <div class="mt-1 text-sm text-slate-500 flex gap-4">
-          <span>Order: <span class="font-medium text-slate-700">{{ orderId }}</span></span>
-          <span v-if="orderDetail?.barcode">Barcode: <span class="font-mono">{{ orderDetail.barcode }}</span></span>
+  <div class="p-4 sm:p-6 lg:p-8">
+    <div v-if="state.loading" class="text-center">
+      <p>Loading order details...</p>
+    </div>
+    <div v-else-if="state.error" class="text-red-500 text-center">
+      <p>
+        Failed to load order details: {{ state.error }}
+        <span v-if="orderId"> (ID: {{ orderId }})</span>
+      </p>
+    </div>
+
+    <div v-else-if="state.detail" class="space-y-8">
+      <PageHeader
+          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
+          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
+      />
+
+      <div class="mt-8" style="min-height: 400px">
+        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
+        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
+          <p>
+            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
+          </p>
         </div>
       </div>
-      <router-link to="/worklist" class="inline-flex items-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-        Back to Worklist
-      </router-link>
-    </div>
 
-    <div v-if="!geoRuntime" class="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3">
-      Geo runtime is not provided. Ensure <code>app.provide('geoRuntime', ...)</code> in <code>main.ts</code>.
-    </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AddressCorrectionCard
+            title="Pickup Address"
+            side="pickup"
+            :original-address="state.detail.originalPickup"
+            :stored-address="state.detail.pickupStoredAddress"
+            :reason-code="state.detail.pickupReasonCode"
+            :is-pending="isPending"
+            :editable-address="state.editedPickup"
+            :geocode-loading="state.geocodeLoading"
+            @update:editableAddress="updateAddress('pickup', $event)"
+            @geocode="handleGeocode('pickup')"
+            @save="handleSave('pickup')"
+            @use-original="handleUseOriginal('pickup')"
+        />
 
-    <div v-if="isLoading && !orderDetail" class="py-16 text-center text-slate-400">Loading order…</div>
-    <div v-if="error" class="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 px-4 py-3">
-      {{ error }}
-    </div>
+        <AddressCorrectionCard
+            title="Delivery Address"
+            side="delivery"
+            :original-address="state.detail.originalDelivery"
+            :stored-address="state.detail.deliveryStoredAddress"
+            :reason-code="state.detail.deliveryReasonCode"
+            :is-pending="isPending"
+            :editable-address="state.editedDelivery"
+            :geocode-loading="state.geocodeLoading"
+            @update:editableAddress="updateAddress('delivery', $event)"
+            @geocode="handleGeocode('delivery')"
+            @save="handleSave('delivery')"
+            @use-original="handleUseOriginal('delivery')"
+        />
+      </div>
 
-    <div v-if="orderDetail" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <section class="bg-white rounded-xl border border-slate-200 p-4 lg:p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-slate-900">Pickup Address</h2>
-          <StatusBadge :status="orderDetail.pickupReasonCode || 'N/A'" />
+      <div
+          v-if="isPending"
+          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
+      >
+        <div class="flex items-center">
+          <input
+              id="applyToSimilar"
+              type="checkbox"
+              v-model="applyToSimilar"
+              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
+          >Apply this correction to all similar pending errors</label
+          >
         </div>
 
-        <AddressDisplay title="Original Pickup" :address="orderDetail.originalPickup" :formatter="formatter" :show-coords="true" />
-        <AddressDisplay class="mt-3" :title="orderDetail.pickupStoredLabel || 'Stored (TrackIT)'" :address="orderDetail.pickupStoredAddress" :formatter="formatter" :show-coords="true" />
-
-        <AddressEditor class="mt-4" title="Edit Pickup" v-model:address="editedPickup"
-                       :suggestions="streetSuggestions" :loading-suggestions="streetLoading"
-                       @street-input="onStreetInput($event, 'pickup')"
-                       @select-suggestion="selectStreetSuggestion($event, 'pickup')" />
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          <ActionButton label="Geocode" :secondary="true" :disabled="isLoading" @click="handleGeocode('pickup')" />
-          <ActionButton label="Save Pickup" :disabled="!hasPickupChanged || isLoading" class="button" @click="handleSave('pickup')" />
+        <div class="flex items-center space-x-2">
+          <button
+              @click="handleSave('both')"
+              :disabled="state.saveLoading"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+          >
+            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+          </button>
         </div>
-      </section>
-
-      <section class="bg-white rounded-xl border border-slate-200 p-4 lg:p-5 shadow-sm">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-semibold text-slate-900">Delivery Address</h2>
-          <StatusBadge :status="orderDetail.deliveryReasonCode || 'N/A'" />
-        </div>
-
-        <AddressDisplay title="Original Delivery" :address="orderDetail.originalDelivery" :formatter="formatter" :show-coords="true" />
-        <AddressDisplay class="mt-3" :title="orderDetail.deliveryStoredLabel || 'Stored (TrackIT)'" :address="orderDetail.deliveryStoredAddress" :formatter="formatter" :show-coords="true" />
-
-        <AddressEditor class="mt-4" title="Edit Delivery" v-model:address="editedDelivery"
-                       :suggestions="streetSuggestions" :loading-suggestions="streetLoading"
-                       @street-input="onStreetInput($event, 'delivery')"
-                       @select-suggestion="selectStreetSuggestion($event, 'delivery')" />
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          <ActionButton label="Geocode" :secondary="true" :disabled="isLoading" @click="handleGeocode('delivery')" />
-          <ActionButton label="Save Delivery" :disabled="!hasDeliveryChanged || isLoading" class="button" @click="handleSave('delivery')" />
-        </div>
-      </section>
-
-      <section class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 lg:p-5 shadow-sm">
-        <h3 class="text-base font-semibold text-slate-900 mb-3">Map Preview</h3>
-        <div ref="mapContainer" class="map-frame">Map is initializing…</div>
-
-        <div class="mt-4 flex items-center justify-end gap-2">
-          <ActionButton label="Save Both" :disabled="!hasAnyChanged || isLoading" class="button" @click="handleSave('both')" />
-          <ActionButton label="Resubmit Verification" :disabled="isLoading" class="button secondary" @click="handleResubmit" />
-        </div>
-      </section>
+      </div>
+      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
+        <p class="font-semibold text-gray-700 dark:text-gray-200">
+          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
+          {{ state.detail.processingStatus }})
+        </p>
+      </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-.button:not(.secondary) { background: #2563eb; color: #fff; }
-.button.secondary { background: #fde047; color: #111827; }
-</style>
+<script setup>
+import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from '@/composables/useToast.js';
+import PageHeader from '@/components/PageHeader.vue';
+import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
+// *** WAŻNA ZMIANA: Usuwamy nieużywany i przestarzały IdempotentSaveController
+// import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
+import { AddressExceptionApi } from "@/services/AddressExceptionApi.js"; // <-- Dodano nowy import API
+
+// Import Manifesto architecture controllers
+import { MapController } from "@/controllers/MapController.js";
+import { EditorFacade } from "@/controllers/EditorFacade.js";
+import { SaveFlowController } from "@/controllers/SaveFlowController.js";
+import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
+import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
+import { Address } from '@/domain/WorkbenchModels.js';
+
+// === Injections ===
+const orchestrator = inject("orchestrator");
+const geoRuntime = inject("geoRuntime");
+const showNotification = inject("showNotification");
+const toast = useToast();
+
+// === Route & Store ===
+const route = useRoute();
+const router = useRouter();
+const worklistStore = useWorklistStore();
+const orderId = ref(route.params.id);
+
+// === Local State ===
+const state = reactive({
+  loading: true,
+  error: null,
+  detail: null,
+  editedPickup: new Address(),
+  editedDelivery: new Address(),
+  geocodeLoading: false,
+  saveLoading: false,
+});
+const applyToSimilar = ref(false);
+const routeInfo = ref(null);
+const mapContainer = ref(null); // DOM ref for map
+
+// === Controller Setup ===
+let mapController = null;
+let editorFacade = null;
+let saveFlow = null;
+let commandBus = null;
+
+const isPending = computed(
+    () => state.detail?.processingStatus === 'PENDING_VERIFICATION'
+);
+
+// === Lifecycle Hooks ===
+onMounted(async () => {
+  if (!orchestrator || !geoRuntime) {
+    state.error = "Critical error: Orchestrator or GeoRuntime not injected.";
+    state.loading = false;
+    return;
+  }
+
+  // 1. Initialize Editor Facade (mapController is null for now)
+  editorFacade = orchestrator.getEditor(null);
+
+  // 2. Initialize Save Controllers
+  // *** POPRAWKA: Użycie AddressExceptionApi zamiast przestarzałego IdempotentSaveController
+  const api = new AddressExceptionApi();
+  saveFlow = new SaveFlowController(editorFacade, worklistStore, api);
+  // *** END POPRAWKA ***
+  commandBus = new EditorCommandBus(editorFacade, saveFlow);
+
+  // 3. Load Order Data
+  await loadOrderData();
+});
+
+onUnmounted(() => {
+  // Clean up map
+  if (mapController) {
+    mapController.destroy();
+    mapController = null;
+    if (editorFacade) editorFacade.preview = null;
+  }
+});
+
+// *** POPRAWKA: Przejście na obserwowanie referencji DOM dla bezpiecznej inicjalizacji mapy ***
+watch(mapContainer, async (newMapEl) => {
+  if (newMapEl && !mapController) {
+    log.info("Map container is now in DOM. Initializing MapController...");
+    try {
+      const mapAdapter = geoRuntime.mapAdapter();
+      mapController = new MapController(mapAdapter);
+
+      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
+
+      editorFacade.preview = orchestrator.createPreviewController(mapController);
+      log.info("MapController initialized and injected into facade.");
+
+      if (state.editedPickup && state.editedDelivery) {
+        await editorFacade.preview.policy.showAndFitRoute(
+            state.editedPickup,
+            state.editedDelivery
+        );
+        log.info("Initial route and markers drawn.");
+      }
+
+      await refreshRouteInfo();
+
+    } catch (err) {
+      log.error("Failed to initialize MapController in watch block:", err);
+      toast.error("Failed to load map: " + err.message, 10000);
+    }
+  } else if (!newMapEl && mapController) {
+    log.info("Map container removed. Destroying map controller.");
+    await mapController.destroy();
+    mapController = null;
+    if (editorFacade) editorFacade.preview = null;
+  }
+});
+// *** END POPRAWKA ***
+
+
+// === Methods ===
+async function loadOrderData() {
+  state.loading = true;
+  state.error = null;
+
+  // Destroy the old map controller IF it exists and prepare for re-render
+  if (mapController) {
+    await mapController.destroy();
+    mapController = null;
+    if (editorFacade) editorFacade.preview = null;
+  }
+  // Set detail to null to unmount the map DOM ref (mapContainer)
+  state.detail = null;
+  await nextTick(); // Wait for unmount to complete
+
+  const result = await editorFacade.load(orderId.value);
+
+  if (result.ok) {
+    const snap = editorFacade.snapshot().editor;
+    // POPRAWKA: Usuwamy błędny kod state.editedDelivery = snap.editedDelivery.img.DbyHtKIl.js:30;
+    // Ustawiamy stan prawidłowo:
+    state.detail = snap.detail;
+    state.editedPickup = snap.editedPickup;
+    state.editedDelivery = snap.editedDelivery;
+    // Po ustawieniu state.detail, uruchomi się watcher mapContainer
+  } else {
+    state.error = result.error.message;
+    toast.error(`Failed to load order: ${state.error}`, 10000);
+  }
+  state.loading = false;
+}
+
+// Fetches route stats from OSRM (via proxy)
+async function refreshRouteInfo() {
+  if (!geoRuntime || !geoRuntime._config.routingUrl) {
+    log.warn("Cannot refresh route info: No routingUrl in geoRuntime.");
+    return;
+  }
+
+  const p = state.editedPickup;
+  const d = state.editedDelivery;
+
+  if (!p?.longitude || !p?.latitude || !d?.longitude || !d?.latitude) {
+    routeInfo.value = null;
+    return;
+  }
+
+  const coords = `${p.longitude},${p.latitude};${d.longitude},${d.latitude}`;
+  const url = `${geoRuntime._config.routingUrl}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+
+  try {
+    const response = await fetch(url); // Use fetch, as it's not an API call
+    if (!response.ok) throw new Error(`OSRM responded with ${response.status}`);
+    const data = await response.json();
+    if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      routeInfo.value = {
+        distance: data.routes[0].distance,
+        duration: data.routes[0].duration,
+      };
+    } else {
+      routeInfo.value = null;
+    }
+  } catch (error) {
+    log.error('Error fetching OSRM route info:', error);
+    routeInfo.value = null;
+    toast.error(`Could not calculate route: ${error.message}`, 4000);
+  }
+}
+
+// Update local state and facade state
+function updateAddress(side, newAddressObject) {
+  if (side === 'pickup') {
+    state.editedPickup = newAddressObject;
+    editorFacade.setManualPickup(newAddressObject);
+  } else {
+    state.editedDelivery = newAddressObject;
+    editorFacade.setManualDelivery(newAddressObject);
+  }
+  // After manual edit, refresh route
+  refreshRouteInfo();
+  if (mapController) {
+    editorFacade.refreshRoute(); // Redraw map line
+  }
+}
+
+async function handleGeocode(side) {
+  state.geocodeLoading = true;
+  toast.info(`Geocoding ${side} address...`, 2000);
+
+  // This uses the Manifesto stack (GeoRuntime -> NominatimAdapter)
+  const result = await editorFacade.geocodeAndFocus(side);
+
+  if (result.ok) {
+    const snap = editorFacade.snapshot().editor;
+    if (side === 'pickup') {
+      state.editedPickup = snap.editedPickup;
+    } else {
+      state.editedDelivery = snap.editedDelivery;
+    }
+    await editorFacade.refreshRoute(); // Redraw route
+    await refreshRouteInfo(); // Get new stats
+    toast.success('Geocoding successful. Address updated.', 3000);
+  } else {
+    log.error(`Geocode failed for ${side}:`, result.error);
+    toast.error(`Geocoding failed: ${result.error.message}`, 5000);
+  }
+  state.geocodeLoading = false;
+}
+
+function handleUseOriginal(side) {
+  if (side === 'pickup') {
+    commandBus.useOriginalPickup();
+  } else {
+    commandBus.useOriginalDelivery();
+  }
+  // Update local state from facade
+  const snap = editorFacade.snapshot().editor;
+  state.editedPickup = snap.editedPickup;
+  state.editedDelivery = snap.editedDelivery;
+
+  editorFacade.refreshRoute();
+  refreshRouteInfo();
+  toast.info(`Original ${side} address restored.`, 2000);
+}
+
+async function handleSave(side) {
+  state.saveLoading = true;
+  let result;
+
+  try {
+    if (side === 'pickup') {
+      toast.info("Saving pickup and fetching next order...", 3000);
+      result = await saveFlow.saveThenAwait('pickup', applyToSimilar.value);
+    } else if (side === 'delivery') {
+      toast.info("Saving delivery and fetching next order...", 3000);
+      result = await saveFlow.saveThenAwait('delivery', applyToSimilar.value);
+    } else {
+      toast.info("Saving both and fetching next order...", 3000);
+      result = await saveFlow.saveThenAwait('both', applyToSimilar.value);
+    }
+
+    if (result.ok) {
+      if (result.value.nextOrderId) {
+        toast.success("Save successful! Loading next order.", 3000);
+        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        // Reload data for the new ID
+        orderId.value = result.value.nextOrderId;
+        await loadOrderData();
+      } else {
+        toast.success("Save successful! No more orders in queue.", 4000);
+        router.push({ name: 'worklist' });
+      }
+    } else {
+      throw result.error;
+    }
+  } catch (e) {
+    log.error(`Save flow failed for side '${side}':`, e);
+    toast.error(`Save failed: ${e.message}`, 10000);
+  } finally {
+    state.saveLoading = false;
+  }
+}
+
+// Basic logger shim
+const log = {
+  info: (...args) => console.info(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
+};
+</script>

@@ -1,69 +1,78 @@
 <template>
-  <div class="min-h-screen bg-gray-100 dark:bg-gray-900">
-    <!-- App shell (hidden on routes with meta.hideShell) -->
-    <div v-if="showShell" class="flex h-screen">
-      <SidebarNav />
+  <div class="flex h-screen bg-gray-50">
 
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <AppHeader @toggle-sidebar="toggleSidebar" />
-        <main class="flex-1 overflow-x-hidden overflow-y-auto">
-          <router-view v-slot="{ Component }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" />
-            </transition>
-          </router-view>
-        </main>
-      </div>
+    <Sidebar :is-open="sidebarOpen" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
 
-      <Notification />
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <AppHeader @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+
+      <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 sm:p-6">
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </main>
     </div>
 
-    <!-- Auth/public screens (e.g., /login) -->
-    <div v-else>
-      <router-view />
-    </div>
+    <Notification />
   </div>
 </template>
-
 <script setup>
-import { ref, onMounted, provide, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth.js'
-import AppHeader from '@/components/layout/AppHeader.vue'
-import SidebarNav from '@/components/layout/SidebarNav.vue'
-import Notification from '@/components/Notification.vue'
-import { useNotificationStore } from '@/stores/notification.js'
+import { ref, onMounted, provide, watch } from 'vue'; // Dodano watch dla tytułu
+import { useRoute } from 'vue-router'; // Dodano useRoute dla tytułu
+import { useAuthStore } from '@/stores/auth.js';
+import Sidebar from '@/components/Sidebar.vue';
+import AppHeader from '@/components/AppHeader.vue';
+import Notification from '@/components/Notification.vue';
+import { useNotificationStore } from '@/stores/notification.js';
 
-const route = useRoute()
-const authStore = useAuthStore()
-const notificationStore = useNotificationStore()
+const authStore = useAuthStore();
+const notificationStore = useNotificationStore();
+const route = useRoute(); // <-- Użyj route
 
-// Provide Pinia auth for any legacy inject('auth') usages
-provide('auth', authStore)
+// --- Sidebar State ---
+const sidebarOpen = ref(window.innerWidth >= 1024);
 
-// Show shell on routes that don't explicitly hide it (e.g., /login has meta.hideShell)
-const showShell = computed(() => !route.meta?.hideShell)
-
-// Optional: hook up mobile/off-canvas behavior later
-const isSidebarOpen = ref(true)
-const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value }
-
+// --- Provide global utilities ---
 provide('showNotification', (message, type = 'info', duration = 5000) => {
-  notificationStore.show(message, type, duration)
-})
+  notificationStore.show(message, type, duration);
+});
 
 onMounted(() => {
-  authStore.checkAuth?.()
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && prefersDark)) {
-    document.documentElement.classList.add('dark')
+  authStore.checkAuth();
+
+  // Basic color scheme preference check
+  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
   } else {
-    document.documentElement.classList.remove('dark')
+    document.documentElement.classList.remove('dark');
   }
-})
+});
+
+// Dodano logikę do dynamicznej zmiany tytułu strony
+watch(() => route.path, () => {
+  const baseTitle = "DANXILS Triage";
+  let pageName = route.name ? route.name.toString() : 'Application';
+
+  if (pageName === 'worklist') pageName = 'Worklist';
+  else if (pageName === 'logs') pageName = 'System Logs';
+  else if (pageName === 'editor') pageName = `Editor: ${route.params.id || 'Loading'}`;
+
+  document.title = `${pageName} | ${baseTitle}`;
+}, { immediate: true });
+
 </script>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+/* Simple fade transition for router-view */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>
