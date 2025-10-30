@@ -1,13 +1,7 @@
-// ============================================================================
-// Frontend: Add WorklistStore.js
-// FILE: src/stores/WorklistStore.js (NEW FILE)
-// REASON: This file was missing, causing the build to fail.
-//         It manages the state of the main worklist.
-// ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { Result } from '@/domain/Result';
-import { WorklistApi } from '@/services/WorklistApi';
+import { WorklistApi } from '@/services/WorklistApi.js'
 
 export const useWorklistStore = defineStore('worklist', () => {
     // --- State ---

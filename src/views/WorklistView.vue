@@ -6,6 +6,7 @@ import { storeToRefs } from 'pinia';
 import { EditorNavigationController } from '@/controllers/EditorNavigationController';
 import StatusBadge from '@/components/common/StatusBadge.vue';
 
+
 const store = useWorklistStore();
 const router = useRouter();
 const nav = new EditorNavigationController();
