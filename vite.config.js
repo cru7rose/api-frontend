@@ -1,20 +1,13 @@
 // ============================================================================
-// Frontend: Fix vite.config.js
-// FILE: vite.config.js (Supersedes previous version)
-// REASON: Removes syntax error (stray URL at the end of the file)
-//         and confirms proxy rewrite for /auth is removed.
+// Frontend: Fix vite.config.js (For Local Development)
+// FILE: vite.config.js
+// REASON: Point /nominatim proxy to the new Nominatim service (port 8083),
+//         not the OSRM port (5001).
 // ============================================================================
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-/**
- * ARCHITECTURE: Vite configuration file.
- * Configures the development server to proxy all API and auth requests
- * to the single canonical backend domain: 'https://api.danxils.com'.
- * This resolves development-time 403/CORS errors by forwarding
- * requests from 'localhost:5173' to the correct backend.
- */
 export default defineConfig({
   plugins: [
     vue(),
@@ -29,26 +22,25 @@ export default defineConfig({
     proxy: {
       // Proxy all /api requests to the production domain
       '/api': {
-        target: 'https://api.danxils.com', // Use the canonical domain
-        changeOrigin: true, // Required for proxying to a different domain
-        secure: true,       // Assuming production domain uses HTTPS
+        target: 'https://api.danxils.com', // Kept as requested
+        changeOrigin: true,
+        secure: true,
       },
       // Proxy all /auth requests to the production domain
       '/auth': {
-        target: 'https://api.danxils.com', // Use the canonical domain
+        target: 'https://api.danxils.com', // Kept as requested
         changeOrigin: true,
         secure: true,
-        // Removed rewrite: (path) => path.replace(/^\/auth/, '/api/auth')
       },
-      // Proxy requests from /nominatim to your Nominatim server
+      // Proxy requests from /nominatim to your NEW Nominatim server
       '/nominatim': {
-        target: 'http://10.105.0.188:5001',
+        target: 'http://10.105.0.188:8083', // <-- FIX: Point to Nominatim, NOT 5001
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/nominatim/, ''),
       },
       // Proxy requests from /osrm to your OSRM server
       '/osrm': {
-        target: 'http://10.105.0.188:5000',
+        target: 'http://10.105.0.188:5000', // This is correct
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/osrm/, ''),
       }

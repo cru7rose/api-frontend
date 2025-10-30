@@ -2,7 +2,7 @@
 # #############################################################################
 
 # Nazwa pliku, w którym zostanie zapisany cały kod.
-$plikWyjsciowy = "frontedfordanxils-api.txt"
+$plikWyjsciowy = "frontend.txt"
 
 # Rozszerzenia plików i konkretne nazwy plików, które mają zostać uwzględnione.
 # Ta lista jest dostosowana do projektu Maven - pominięto pliki Gradle.
@@ -15,7 +15,9 @@ $uwzglednianeRozszerzenia = @(
     '.sql',       # Skrypty SQL
     '.html',      # Pliki HTML (np. Thymeleaf)
     '.css',       # Arkusze stylów
-    '.js'         # Skrypty JavaScript
+    '.js',        # Skrypty JavaScript
+    '.vue',
+    '.ts'
 )
 
 # Nazwy katalogów, które mają zostać POMINIĘTE podczas skanowania.

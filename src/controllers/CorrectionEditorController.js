@@ -23,7 +23,7 @@ export class CorrectionEditorController {
       console.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
     }
     this.orderId = null;
-    this.detail = null; // This holds the full OrderDetailDTO
+    this.detail = null;
     this.loading = false;
     this.error = null;
     this.editedPickup = null;
@@ -95,10 +95,7 @@ export class CorrectionEditorController {
     if (!Array.isArray(list) || !list[index]) return Result.fail(new Error("Suggestion not found."));
     const s = list[index];
 
-    // Suggestions *may* carry name/alias, but typically they are address-focused.
-    // When accepting a suggestion, we *keep* the name/alias that was already in the edit box.
     const base = side === "pickup" ? this.editedPickup : this.editedDelivery;
-
     const addr = new Address({
       street: s.street || "",
       houseNumber: s.houseNumber || null,
@@ -110,7 +107,6 @@ export class CorrectionEditorController {
       name: base?.name || null, // Preserve existing edited name
       alias: base?.alias || null // Preserve existing edited alias
     });
-
     if (side === "pickup") this.editedPickup = addr;
     if (side === "delivery") this.editedDelivery = addr;
     return Result.ok(addr);
@@ -146,8 +142,6 @@ export class CorrectionEditorController {
   }
 
   setManualAddress(side, address) {
-    // This method implicitly supports name/alias
-    // as long as the 'address' object is an instance of our updated Address model
     if (!(address instanceof Address)) return Result.fail(new Error("Invalid Address object."));
     if (side === "pickup") this.editedPickup = address;
     else if (side === "delivery") this.editedDelivery = address;
@@ -159,7 +153,6 @@ export class CorrectionEditorController {
     if (!this.geocoder) return Result.fail(new Error("No geocoder available."));
     const addr = side === "pickup" ? this.editedPickup : this.editedDelivery;
     if (!(addr instanceof Address)) return Result.fail(new Error("No edited address."));
-
     const r = await this.geocoder.geocode({
       street: addr.street,
       houseNumber: addr.houseNumber,
@@ -176,8 +169,7 @@ export class CorrectionEditorController {
   }
 
   // --- DEPRECATED SAVE METHODS ---
-  // These methods are kept to avoid breaking 'EditorFacade', but the new
-  // 'SaveFlowController' will bypass them and use its own logic.
+  // Kept for facade compatibility
   async saveAcceptSuggestion(side) {
     log.warn("DEPRECATED: saveAcceptSuggestion called. Use SaveFlowController.");
     return Result.fail(new Error("Save logic is deprecated."));

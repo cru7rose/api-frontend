@@ -1,3 +1,10 @@
+<!--
+============================================================================
+Frontend: New Map Component
+FILE: src/components/CorrectionMap.vue
+REASON: Converted to JavaScript, removed all TypeScript syntax.
+============================================================================
+-->
 <template>
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
     <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
@@ -10,11 +17,8 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import type { PropType } from 'vue'
-import type { AddressDto } from '@/model/AddressDto'
-import type { OsrmRoute } from '@/stores/addressStore'
 
 // Import Leaflet. This relies on Leaflet being installed in the project.
 import 'leaflet/dist/leaflet.css'
@@ -53,24 +57,24 @@ const deliveryIcon = new L.Icon({
 
 const props = defineProps({
   pickup: {
-    type: Object as PropType<AddressDto>,
+    type: Object,
     required: true
   },
   delivery: {
-    type: Object as PropType<AddressDto>,
+    type: Object,
     required: true
   },
   route: {
-    type: Object as PropType<OsrmRoute | null>,
+    type: Object,
     default: null
   }
 })
 
-const mapContainer = ref<HTMLElement | null>(null)
-const map = ref<L.Map | null>(null)
-const pickupMarker = ref<L.Marker | null>(null)
-const deliveryMarker = ref<L.Marker | null>(null)
-const routeLayer = ref<L.GeoJSON | null>(null)
+const mapContainer = ref(null)
+const map = ref(null)
+const pickupMarker = ref(null)
+const deliveryMarker = ref(null)
+const routeLayer = ref(null)
 
 onMounted(() => {
   if (mapContainer.value) {

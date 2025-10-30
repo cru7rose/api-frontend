@@ -20,8 +20,8 @@ export class Address {
     this.latitude = typeof latitude === "number" ? latitude : null;
     this.longitude = typeof longitude === "number" ? longitude : null;
     // --- NEW FIELDS ---
-    this.name = name || null; // e.g., Attention Name
-    this.alias = alias || null; // e.g., Pickup/Delivery Alias
+    this.name = name || null;
+    this.alias = alias || null;
     // --- END NEW FIELDS ---
   }
 
