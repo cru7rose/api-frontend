@@ -5,8 +5,7 @@
 
 // ============================================================================
 // Frontend: Update main.js (Final Version)
-// FILE: src/main.js
-// REASON: Align GeoRuntime config, ensure correct CSS import, provide orchestrator.
+// REASON: Configure GeoRuntime to use the '/nominatim' proxy path.
 // ============================================================================
 // FILE: src/main.js
 import { createApp } from "vue";
@@ -16,23 +15,18 @@ import { createRouter } from "@/router/index";
 import { AppBootstrapController } from "@/controllers/AppBootstrapController";
 import { AuthController } from "@/controllers/AuthController";
 import { GeoRuntime } from "@/adapters/GeoRuntime";
-// Import Orchestrator for global singleton
 import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
-// *** CORRECTED CSS IMPORT PATH ***
-import '@/assets/theme.css'; // Use theme.css directly
-// *** END CORRECTION ***
+import '@/assets/theme.css';
 
 (async () => {
-    // 1. Setup Pinia & Auth Controller early
     const pinia = createPinia();
     const auth = new AuthController();
-    auth.hydrateFromStorage(); // Load auth state from localStorage
+    auth.hydrateFromStorage();
 
-    // 2. Bootstrap App (load config, check health)
     const bootstrap = new AppBootstrapController();
-    const boot = await bootstrap.bootstrap(); // Gets config object { config, health }
-    const config = boot.config || {}; // Loaded config (contains VITE_ vars)
-    const health = boot.health || { ok: false }; // Basic health info
+    const boot = await bootstrap.bootstrap();
+    const config = boot.config || {};
+    const health = boot.health || { ok: false };
 
     // 3. Configure GeoRuntime
     const geoProviderConfig = {
@@ -40,13 +34,14 @@ import '@/assets/theme.css'; // Use theme.css directly
         geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
-        nominatimUrl: config?.VITE_NOMINATIM_URL || null, // Allow override
-        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || null, // Pass routing URL
+        // *** FIX: Use the proxy path, not the direct IP from the adapter's default ***
+        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim',
+        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || null,
     };
     const googleKey = config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
     const geoRuntime = new GeoRuntime(geoProviderConfig);
 
-    // 4. Initialize GeoRuntime (loads Google scripts if needed)
+    // 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
         console.log("[main.js] Geo Runtime initialization attempted.");
@@ -54,23 +49,16 @@ import '@/assets/theme.css'; // Use theme.css directly
         console.error("[main.js] Global Geo Runtime initialization failed:", err?.message || err);
     }
 
-    // 5. Create Router (needs GeoRuntime for editor guard)
     const router = createRouter(geoRuntime);
-
-    // 6. Create Vue App
     const app = createApp(App);
 
-    // 7. Global Error handlers
     app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
     window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
     window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));
 
-    // 8. Use plugins
     app.use(pinia);
     app.use(router);
 
-    // 9. Provide global singletons
-    // Orchestrator provides editor/worklist facades
     const orchestrator = new IntegrationOrchestrator(geoRuntime, null);
     app.provide("orchestrator", orchestrator);
     app.provide("auth", auth);
@@ -78,9 +66,9 @@ import '@/assets/theme.css'; // Use theme.css directly
     app.provide("health", health);
     app.provide("geoRuntime", geoRuntime);
 
-    // 10. Mount App
     app.mount("#app");
 })();
+
 
 ================================================================================
 ### PLIK: viewmodels/DiffPresenter.js
@@ -1927,21 +1915,22 @@ export class MapGeocoderAdapter {
 ### PLIK: adapters/NominatimGeocodingAdapter.js
 ================================================================================
 
+// ============================================================================
+// Frontend: Update NominatimGeocodingAdapter
+// FILE: src/adapters/NominatimGeocodingAdapter.js
+// REASON: Change hardcoded default URL to use the '/nominatim' proxy path.
+// ============================================================================
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 import { AddressNormalizer } from '@/services/AddressNormalizer';
 /**
  * ARCHITECTURE: NominatimGeocodingAdapter wraps OpenStreetMap Nominatim API for geocoding.
- * Provides address -> {lat, lon, normalizedFields} via fetch.
- * Adheres to geocoding adapter interface.
- *
- * REFACTORED: Constructor is now null-safe and applies defaults internally
- * if 'nominatimUrl' or 'email' are passed as null/undefined from GeoRuntime.
+ * REFACTORED: Default URL now points to the proxy path '/nominatim'.
  */
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
         // *** FIX: Apply defaults internally to handle null/undefined inputs ***
-        const effectiveUrl = nominatimUrl || 'http://10.105.0.188:5001'; // *** UPDATED DEFAULT ***
-        const effectiveEmail = email || 'YOUR_APP_EMAIL_FOR_POLICY@example.com';
+        const effectiveUrl = nominatimUrl || '/nominatim'; // *** UPDATED DEFAULT ***
+        const effectiveEmail = email || 'triage-app@example.com'; // Use email from config or default
         // *** END FIX ***
 
         this.baseUrl = effectiveUrl.replace(/\/+$/, "");
@@ -1990,8 +1979,7 @@ export class NominatimGeocodingAdapter {
             const best = results[0];
             const components = best.address || {};
             const lat = best.lat ? parseFloat(best.lat) : null;
-            const lon = best.lon ?
-                parseFloat(best.lon) : null;
+            const lon = best.lon ? parseFloat(best.lon) : null;
 
             if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
                 log.warn(`[Nominatim] Result for query '${queryDesc}' missing valid coordinates. Lat: ${best.lat}, Lon: ${best.lon}`);
@@ -1999,14 +1987,10 @@ export class NominatimGeocodingAdapter {
             }
 
             const normalized = {
-                street: components.road ||
-                    address.street || null,
-                houseNumber: components.house_number ||
-                    address.houseNumber || null,
-                postalCode: components.postcode ||
-                    address.postalCode || null,
-                city: components.city ||
-                    components.town || components.village || address.city || null,
+                street: components.road || address.street || null,
+                houseNumber: components.house_number || address.houseNumber || null,
+                postalCode: components.postcode || address.postalCode || null,
+                city: components.city || components.town || components.village || address.city || null,
                 country: (components.country_code || address.country || 'pl').toUpperCase(),
                 latitude: lat,
                 longitude: lon,
@@ -2014,8 +1998,7 @@ export class NominatimGeocodingAdapter {
                 _displayName: best.display_name,
                 _osmType: best.osm_type,
                 _osmId: best.osm_id,
-                _confidence: best.importance ?
-                    parseFloat(best.importance) : null,
+                _confidence: best.importance ? parseFloat(best.importance) : null,
             };
             log.debug(`[Nominatim] Geocode success for query '${queryDesc}'. Result: Lat=${normalized.latitude}, Lon=${normalized.longitude}`);
             return normalized;
@@ -2032,6 +2015,7 @@ const log = {
     warn: (...args) => console.warn(...args),
     error: (...args) => console.error(...args),
 };
+
 
 ================================================================================
 ### PLIK: controllers/AddressFormController.js
@@ -4751,8 +4735,8 @@ export class TriageDashboardController {
     // *** MODIFICATION: Removed getRecentBatches() call ***
     const [kpiRes, typeRes] = await Promise.all([
       this.api.getTriageKpis(),
-      // this.api.getRecentBatches(), // <-- REMOVED THIS LINE
-      this.api.getPendingByErrorType(),
+      // this.api.getRecentBatches(), // <-- This line should be gone
+      this.api.getPendingByErrorType(), // <-- This line is correct
     ]);
     // *** END MODIFICATION ***
 
@@ -4786,13 +4770,13 @@ export class TriageDashboardController {
     // const b = this.polling.start("batches", intervalMs, async () => {
     //   const r = await this.api.getRecentBatches();
     //   if (r.ok) this.recentBatches = Array.isArray(r.value) ? r.value : [];
-    // }); [cite: 1089-1090]
+    // });
     // *** END MODIFICATION ***
     const e = this.polling.start("errorsByType", intervalMs, async () => {
       const r = await this.api.getPendingByErrorType();
       if (r.ok) this.pendingByErrorType = Array.isArray(r.value) ? r.value : [];
     });
-    this._pollHandles = [k, e]; // Removed 'b' from handles [cite: 1091]
+    this._pollHandles = [k, e]; // Removed 'b' from handles
     return this._pollHandles.slice();
   }
 
@@ -5061,9 +5045,15 @@ export class WorklistExportController {
 ### PLIK: controllers/WorklistFacade.js
 ================================================================================
 
+// ============================================================================
+// Frontend: Fix WorklistFacade import
+// FILE: src/controllers/WorklistFacade.js (Supersedes previous version)
+// REASON: Correct the case of the 'worklistStore' import to 'WorklistStore'
+//         to match the filename, fixing the Docker build failure.
+// ============================================================================
 // FILE: src/controllers/WorklistFacade.js
-import { useWorklistStore } from "@/stores/worklistStore";
-import { PollingService } from "@/services/PollingService";
+import { useWorklistStore } from "@/stores/WorklistStore.js"; // *** CORRECTED FILE CASE ***
+import { PollingService } from "@/services/PollingService.js";
 import { Result } from "@/domain/Result";
 
 export class WorklistFacade {
@@ -5143,6 +5133,7 @@ export class WorklistFacade {
         return [...this._store.selection];
     }
 }
+
 
 ================================================================================
 ### PLIK: controllers/WorklistKpiController.js
@@ -5726,7 +5717,7 @@ export class AddressEqualityService {
 // ============================================================================
 // Frontend: Update AddressExceptionApi (Supersedes previous version)
 // FILE: src/services/AddressExceptionApi.js
-// REASON: Align saveCorrection to call /api/orders/{barcode}/approve endpoint.
+// REASON: Add missing 'getPendingByErrorType' method.
 // ============================================================================
 // FILE: src/services/AddressExceptionApi.js (Supersedes previous version)
 import api from "@/services/api";
@@ -5735,10 +5726,7 @@ import { Address } from "@/domain/WorkbenchModels";
 
 /**
  * ARCHITECTURE: API client for address-related operations.
- * REFACTORED:
- * - `getWorklist` filters by `status=PENDING_VERIFICATION` by default.
- * - `getOrderDetail` maps `sourceSystem`.
- * - `saveCorrection` method calls the new `/api/orders/{barcode}/approve` endpoint.
+ * UPDATED: Added getPendingByErrorType method.
  */
 export class AddressExceptionApi {
     constructor() {
@@ -5750,13 +5738,12 @@ export class AddressExceptionApi {
             const q = new URLSearchParams();
             q.set("page", String(filter.page >= 0 ? filter.page : 0));
             q.set("size", String(filter.size || 25));
-            q.set("status", filter.status || 'PENDING_VERIFICATION'); // Default to PENDING_VERIFICATION
+            q.set("status", filter.status || 'PENDING_VERIFICATION');
             if (filter.barcode) q.set("barcode", filter.barcode);
             if (filter.sort) q.set("sort", filter.sort);
             if (filter.customerId) q.set("customerId", filter.customerId);
             if (filter.dateFrom) q.set("dateFrom", filter.dateFrom);
             if (filter.dateTo) q.set("dateTo", filter.dateTo);
-
             const res = await this.client.get(`/api/orders?${q.toString()}`);
             const data = res.data || {};
             return Result.ok({
@@ -5775,7 +5762,6 @@ export class AddressExceptionApi {
             return Result.fail(new Error("Order ID is required."));
         }
         try {
-            // Use orderId (UUID) to fetch, not barcode
             const res = await this.client.get(`/api/orders/${encodeURIComponent(orderId)}`);
             const backendDto = res.data;
             if (!backendDto || !backendDto.id) {
@@ -5795,7 +5781,7 @@ export class AddressExceptionApi {
                 barcode: backendDto.barcode,
                 requestId: backendDto.requestId,
                 customerId: backendDto.customerId,
-                sourceSystem: backendDto.sourceSystem, // *** ADDED MAPPING ***
+                sourceSystem: backendDto.sourceSystem,
                 processingStatus: backendDto.processingStatus,
                 createdAt: backendDto.createdAt,
                 updatedAt: backendDto.updatedAt,
@@ -5825,28 +5811,16 @@ export class AddressExceptionApi {
         }
     }
 
-    /**
-     * Replaces the old /corrections endpoint call.
-     * Now calls the centralized /api/orders/{barcode}/approve endpoint.
-     *
-     * @param {object} body - Must contain { barcode, resolveCoordinatesIfNeeded }
-     * @param {string} idempotencyToken - The idempotency key.
-     */
     async saveCorrection(body, idempotencyToken = null) {
         const barcode = body?.barcode;
         if (!barcode) {
             return Result.fail(new Error("Barcode is required to approve the correction."));
         }
-
-        // Build the payload required by POST /api/orders/{barcode}/approve
         const approvePayload = {
             resolveCoordinatesIfNeeded: body?.resolveCoordinatesIfNeeded || false
         };
-
         try {
             const headers = idempotencyToken ? { "Idempotency-Key": idempotencyToken } : {};
-
-            // Call the correct endpoint using the barcode
             const res = await this.client.post(`/api/orders/${encodeURIComponent(barcode)}/approve`, approvePayload, { headers });
             return Result.ok(res.data || true);
         } catch (e) {
@@ -5855,8 +5829,6 @@ export class AddressExceptionApi {
             return Result.fail(new Error(errorMessage));
         }
     }
-
-    // (Kept other methods: getTriageKpis, sendClientLogs, admin operations, etc.)
 
     async getTriageKpis() {
         try {
@@ -5870,11 +5842,29 @@ export class AddressExceptionApi {
         }
     }
 
+    // *** ADDED THIS METHOD ***
+    async getPendingByErrorType() {
+        try {
+            const res = await this.client.get(`/api/dashboard/pending-by-error-type`);
+            const data = res.data || [];
+            return Result.ok(Array.isArray(data) ? data : []);
+        } catch (e) {
+            console.error("Error fetching pending by error type:", e);
+            const errorMessage = e.response?.data?.error || e.message || "Failed to fetch pending errors by type.";
+            return Result.fail(new Error(errorMessage));
+        }
+    }
+    // *** END ADDED METHOD ***
+
     async sendClientLogs(logEntries) {
         if (!Array.isArray(logEntries) || logEntries.length === 0) {
             return Promise.resolve();
         }
-        return this.client.post(`/api/log/client`, logEntries);
+        // Fire-and-forget, don't await, don't return Result
+        this.client.post(`/api/log/client`, logEntries).catch(err => {
+            console.warn("Failed to send client logs:", err.message);
+        });
+        return Promise.resolve();
     }
 
     async requestGetAvailableProviders() { return this.client.get(`/api/admin/address-verification/providers/available`); }

@@ -1,6 +1,6 @@
 // ============================================================================
-// Frontend: Update main.js (Final Version)
-// REASON: Configure GeoRuntime to use the '/nominatim' proxy path.
+// Frontend: Update main.js
+// REASON: Default OSRM routing URL to the proxy path '/osrm'.
 // ============================================================================
 // FILE: src/main.js
 import { createApp } from "vue";
@@ -12,7 +12,6 @@ import { AuthController } from "@/controllers/AuthController";
 import { GeoRuntime } from "@/adapters/GeoRuntime";
 import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
 import '@/assets/theme.css';
-
 (async () => {
     const pinia = createPinia();
     const auth = new AuthController();
@@ -27,15 +26,16 @@ import '@/assets/theme.css';
     const geoProviderConfig = {
         map: (config?.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
         geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
+
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
         // *** FIX: Use the proxy path, not the direct IP from the adapter's default ***
         nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim',
-        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || null,
+        // *** FIX: Use OSRM proxy path '/osrm' by default ***
+        routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey = config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
     const geoRuntime = new GeoRuntime(geoProviderConfig);
-
     // 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
@@ -46,7 +46,6 @@ import '@/assets/theme.css';
 
     const router = createRouter(geoRuntime);
     const app = createApp(App);
-
     app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
     window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
     window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));

@@ -1,12 +1,17 @@
+// ============================================================================
+// Frontend: Update domain/WorkbenchModels.js
+// REASON: Add 'alias' and 'name' fields to the Address model.
+// ============================================================================
 /**
  * ARCHITECTURE: WorkbenchModels define immutable value objects used by the editor and worklist.
  * It follows the manifesto by centralizing simple data models away from transport and views.
  * Responsibilities:
  * - Provide Address with factory helpers to ensure safe defaults and cloning.
  * - Offer toPlain() for persistence mapping without leaking internal structure.
+ * UPDATED: Added 'name' and 'alias' fields.
  */
 export class Address {
-  constructor({ street = "", houseNumber = null, postalCode = "", city = "", country = "PL", latitude = null, longitude = null } = {}) {
+  constructor({ street = "", houseNumber = null, postalCode = "", city = "", country = "PL", latitude = null, longitude = null, name = null, alias = null } = {}) {
     this.street = street || "";
     this.houseNumber = houseNumber || null;
     this.postalCode = postalCode || "";
@@ -14,6 +19,10 @@ export class Address {
     this.country = country || "PL";
     this.latitude = typeof latitude === "number" ? latitude : null;
     this.longitude = typeof longitude === "number" ? longitude : null;
+    // --- NEW FIELDS ---
+    this.name = name || null; // e.g., Attention Name
+    this.alias = alias || null; // e.g., Pickup/Delivery Alias
+    // --- END NEW FIELDS ---
   }
 
   static from(obj) {
@@ -26,6 +35,10 @@ export class Address {
       country: obj.country,
       latitude: obj.latitude,
       longitude: obj.longitude,
+      // --- NEW FIELDS ---
+      name: obj.name,
+      alias: obj.alias,
+      // --- END NEW FIELDS ---
     });
   }
 
@@ -42,6 +55,10 @@ export class Address {
       country: this.country,
       latitude: this.latitude,
       longitude: this.longitude,
+      // --- NEW FIELDS ---
+      name: this.name,
+      alias: this.alias,
+      // --- END NEW FIELDS ---
     };
   }
 }

@@ -1,8 +1,12 @@
+// ============================================================================
+// Frontend: Update SuggestionPreviewController.js
+// FILE: src/controllers/SuggestionPreviewController.js
+// REASON: Update 'show' method to accept a 'side' parameter.
+// ============================================================================
 /**
  * ARCHITECTURE: SuggestionPreviewController coordinates map focusing for a chosen suggestion.
  * It follows the manifesto by isolating viewport behavior from editor and views.
- * Responsibilities:
- * - Show a suggestion on the map by updating marker and recentering using MapViewportPolicyController.
+ * REFACTORED: Now accepts a 'side' parameter.
  */
 import { MapViewportPolicyController } from "@/controllers/MapViewportPolicyController";
 
@@ -12,8 +16,14 @@ export class SuggestionPreviewController {
     this.policy = new MapViewportPolicyController(mapController);
   }
 
-  async show(suggestion) {
+  /**
+   * Shows a suggestion on the map for a specific side.
+   * @param {'pickup' | 'delivery'} side
+   * @param {object} suggestion
+   */
+  async show(side, suggestion) {
     if (!suggestion) return false;
-    return await this.policy.focusSuggestion(suggestion);
+    // Pass the side to the policy
+    return await this.policy.focusSuggestion(side, suggestion);
   }
 }

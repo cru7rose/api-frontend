@@ -1,30 +1,29 @@
+// ============================================================================
+// Frontend: Update CorrectionEditorController
+// FILE: src/controllers/CorrectionEditorController.js
+// REASON: Populate 'name' and 'alias' fields in editedPickup/editedDelivery
+//         state upon load, acceptSuggestion, and useOriginal.
+// ============================================================================
 /**
  * ARCHITECTURE: CorrectionEditorController orchestrates the "side-by-side diff" editor.
  * It follows the manifesto by isolating all IO and decision logic away from the component tree.
- * Responsibilities:
- * - Loads OrderDetail and related suggestions for pickup/delivery.
- * - Maintains editable copies of addresses, integrates optional geocoder.
- * - Applies Accept Suggestion, Use Original, Manual Edit, Save, and Save & Next.
- * - Shields UI from API details via AddressExceptionApi and from map choice via GeocodeWithCacheController.
- * REFACTORED: Now accepts a GeocodeWithCacheController instead of MapGeocoderAdapter.
+ * REFACTORED: Now accepts a GeocodeWithCacheController.
+ * UPDATED: Now maps 'name' and 'alias' into the editable state.
  */
 import { Address } from "@/domain/WorkbenchModels";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
-// *** MODIFIED: Import GeocodeWithCacheController ***
 import { GeocodeWithCacheController } from "@/controllers/GeocodeWithCacheController";
-// *** REMOVED: MapGeocoderAdapter import
 
 export class CorrectionEditorController {
   constructor(api = new AddressExceptionApi(), geocoder = null) {
     this.api = api;
-    // *** FIX: Check for GeocodeWithCacheController instance ***
     this.geocoder = geocoder instanceof GeocodeWithCacheController ? geocoder : null;
     if (!this.geocoder) {
       console.warn("[CorrectionEditorController] Geocoder (GeocodeWithCacheController) was not provided or invalid.");
     }
     this.orderId = null;
-    this.detail = null;
+    this.detail = null; // This holds the full OrderDetailDTO
     this.loading = false;
     this.error = null;
     this.editedPickup = null;
@@ -32,7 +31,6 @@ export class CorrectionEditorController {
   }
 
   setGeocoderAdapter(adapter) {
-    // *** FIX: Update type check ***
     this.geocoder = adapter instanceof GeocodeWithCacheController ? adapter : null;
     return this.geocoder;
   }
@@ -51,24 +49,32 @@ export class CorrectionEditorController {
       return Result.fail(res.error);
     }
     this.detail = res.value;
-    this.editedPickup = new Address(
-        this.detail.originalPickup.street,
-        this.detail.originalPickup.houseNumber,
-        this.detail.originalPickup.postalCode,
-        this.detail.originalPickup.city,
-        this.detail.originalPickup.country,
-        this.detail.originalPickup.latitude,
-        this.detail.originalPickup.longitude
-    );
-    this.editedDelivery = new Address(
-        this.detail.originalDelivery.street,
-        this.detail.originalDelivery.houseNumber,
-        this.detail.originalDelivery.postalCode,
-        this.detail.originalDelivery.city,
-        this.detail.originalDelivery.country,
-        this.detail.originalDelivery.latitude,
-        this.detail.originalDelivery.longitude
-    );
+
+    // --- UPDATED: Populate name/alias from original data ---
+    this.editedPickup = new Address({
+      street: this.detail.originalPickup.street,
+      houseNumber: this.detail.originalPickup.houseNumber,
+      postalCode: this.detail.originalPickup.postalCode,
+      city: this.detail.originalPickup.city,
+      country: this.detail.originalPickup.country,
+      latitude: this.detail.originalPickup.latitude,
+      longitude: this.detail.originalPickup.longitude,
+      name: this.detail.originalPickup.name, // Added
+      alias: this.detail.originalPickup.alias // Added
+    });
+    this.editedDelivery = new Address({
+      street: this.detail.originalDelivery.street,
+      houseNumber: this.detail.originalDelivery.houseNumber,
+      postalCode: this.detail.originalDelivery.postalCode,
+      city: this.detail.originalDelivery.city,
+      country: this.detail.originalDelivery.country,
+      latitude: this.detail.originalDelivery.latitude,
+      longitude: this.detail.originalDelivery.longitude,
+      name: this.detail.originalDelivery.name, // Added
+      alias: this.detail.originalDelivery.alias // Added
+    });
+    // --- END UPDATE ---
+
     this.loading = false;
     return Result.ok(this.detail);
   }
@@ -88,15 +94,23 @@ export class CorrectionEditorController {
     const list = side === "pickup" ? this.detail.suggestedPickup : this.detail.suggestedDelivery;
     if (!Array.isArray(list) || !list[index]) return Result.fail(new Error("Suggestion not found."));
     const s = list[index];
-    const addr = new Address(
-        s.street || "",
-        s.houseNumber || null,
-        s.postalCode || "",
-        s.city || "",
-        s.countryCode || this._defaultCountry(),
-        s.latitude ?? null,
-        s.longitude ?? null
-    );
+
+    // Suggestions *may* carry name/alias, but typically they are address-focused.
+    // When accepting a suggestion, we *keep* the name/alias that was already in the edit box.
+    const base = side === "pickup" ? this.editedPickup : this.editedDelivery;
+
+    const addr = new Address({
+      street: s.street || "",
+      houseNumber: s.houseNumber || null,
+      postalCode: s.postalCode || "",
+      city: s.city || "",
+      country: s.countryCode || this._defaultCountry(),
+      latitude: s.latitude ?? null,
+      longitude: s.longitude ?? null,
+      name: base?.name || null, // Preserve existing edited name
+      alias: base?.alias || null // Preserve existing edited alias
+    });
+
     if (side === "pickup") this.editedPickup = addr;
     if (side === "delivery") this.editedDelivery = addr;
     return Result.ok(addr);
@@ -106,19 +120,35 @@ export class CorrectionEditorController {
     if (!this.detail) return Result.fail(new Error("Order not loaded."));
     if (side === "pickup") {
       const o = this.detail.originalPickup;
-      this.editedPickup = new Address(o.street, o.houseNumber, o.postalCode, o.city, o.country, o.latitude, o.longitude);
+      // --- UPDATED: Copy name/alias ---
+      this.editedPickup = new Address({
+        street: o.street, houseNumber: o.houseNumber, postalCode: o.postalCode, city: o.city, country: o.country,
+        latitude: o.latitude, longitude: o.longitude,
+        name: o.name, // Added
+        alias: o.alias // Added
+      });
+      // --- END UPDATE ---
       return Result.ok(this.editedPickup);
     }
     if (side === "delivery") {
       const o = this.detail.originalDelivery;
-      this.editedDelivery = new Address(o.street, o.houseNumber, o.postalCode, o.city, o.country, o.latitude, o.longitude);
+      // --- UPDATED: Copy name/alias ---
+      this.editedDelivery = new Address({
+        street: o.street, houseNumber: o.houseNumber, postalCode: o.postalCode, city: o.city, country: o.country,
+        latitude: o.latitude, longitude: o.longitude,
+        name: o.name, // Added
+        alias: o.alias // Added
+      });
+      // --- END UPDATE ---
       return Result.ok(this.editedDelivery);
     }
     return Result.fail(new Error("Unknown side."));
   }
 
   setManualAddress(side, address) {
-    if (!(address instanceof Address)) return Result.fail(new Error("Invalid Address."));
+    // This method implicitly supports name/alias
+    // as long as the 'address' object is an instance of our updated Address model
+    if (!(address instanceof Address)) return Result.fail(new Error("Invalid Address object."));
     if (side === "pickup") this.editedPickup = address;
     else if (side === "delivery") this.editedDelivery = address;
     else return Result.fail(new Error("Unknown side."));
@@ -126,12 +156,10 @@ export class CorrectionEditorController {
   }
 
   async geocodeEdited(side) {
-    // *** FIX: Use GeocodeWithCacheController ***
     if (!this.geocoder) return Result.fail(new Error("No geocoder available."));
     const addr = side === "pickup" ? this.editedPickup : this.editedDelivery;
     if (!(addr instanceof Address)) return Result.fail(new Error("No edited address."));
 
-    // Call the geocode method on GeocodeWithCacheController
     const r = await this.geocoder.geocode({
       street: addr.street,
       houseNumber: addr.houseNumber,
@@ -139,74 +167,34 @@ export class CorrectionEditorController {
       city: addr.city,
       country: addr.country,
     });
-
     if (!r) return Result.fail(new Error("Geocode not found."));
 
-    // GeocodeWithCacheController returns the full normalized address object
     addr.latitude = r.latitude;
     addr.longitude = r.longitude;
-    // Optionally update other fields if normalization is desired
-    // addr.street = r.street;
-    // addr.houseNumber = r.houseNumber;
-    // addr.postalCode = r.postalCode;
-    // addr.city = r.city;
 
     return Result.ok({ lat: r.latitude, lon: r.longitude });
   }
 
+  // --- DEPRECATED SAVE METHODS ---
+  // These methods are kept to avoid breaking 'EditorFacade', but the new
+  // 'SaveFlowController' will bypass them and use its own logic.
   async saveAcceptSuggestion(side) {
-    if (!this.orderId) return Result.fail(new Error("Order not loaded."));
-    const payload = {
-      orderId: this.orderId,
-      side: side === "both" ? "both" : side === "pickup" ? "pickup" : "delivery",
-      correctedPickup: side === "pickup" || side === "both" ? this.editedPickup : null,
-      correctedDelivery: side === "delivery" || side === "both" ? this.editedDelivery : null,
-      resolution: "ACCEPT_SUGGESTION",
-    };
-    const res = await this.api.saveCorrection(payload);
-    if (!res.ok) return Result.fail(res.error);
-    return Result.ok(res.value);
+    log.warn("DEPRECATED: saveAcceptSuggestion called. Use SaveFlowController.");
+    return Result.fail(new Error("Save logic is deprecated."));
   }
-
   async saveUseOriginal(side) {
-    if (!this.orderId) return Result.fail(new Error("Order not loaded."));
-    const payload = {
-      orderId: this.orderId,
-      side: side === "both" ? "both" : side === "pickup" ? "pickup" : "delivery",
-      correctedPickup: side === "pickup" || side === "both" ? this.editedPickup : null,
-      correctedDelivery: side === "delivery" || side === "both" ? this.editedDelivery : null,
-      resolution: "USE_ORIGINAL",
-    };
-    const res = await this.api.saveCorrection(payload);
-    if (!res.ok) return Result.fail(res.error);
-    return Result.ok(res.value);
+    log.warn("DEPRECATED: saveUseOriginal called. Use SaveFlowController.");
+    return Result.fail(new Error("Save logic is deprecated."));
   }
-
   async saveManual(side) {
-    if (!this.orderId) return Result.fail(new Error("Order not loaded."));
-    const payload = {
-      orderId: this.orderId,
-      side: side === "both" ? "both" : side === "pickup" ? "pickup" : "delivery",
-      correctedPickup: side === "pickup" || side === "both" ? this.editedPickup : null,
-      correctedDelivery: side === "delivery" || side === "both" ? this.editedDelivery : null,
-      resolution: "MANUAL_EDIT",
-    };
-    const res = await this.api.saveCorrection(payload);
-    if (!res.ok) return Result.fail(res.error);
-    return Result.ok(res.value);
+    log.warn("DEPRECATED: saveManual called. Use SaveFlowController.");
+    return Result.fail(new Error("Save logic is deprecated."));
   }
-
   async saveAndNext(side, worklistStore) {
-    const saveRes = await this._saveBySideKind(side);
-    if (!saveRes.ok) return saveRes;
-    const nextIdRes = await worklistStore.getNextAndLoad(this.orderId);
-    if (!nextIdRes.ok) return Result.fail(nextIdRes.error);
-    const nextId = nextIdRes.value;
-    if (!nextId) return Result.ok(null);
-    const loadRes = await this.loadOrder(nextId);
-    if (!loadRes.ok) return Result.fail(loadRes.error);
-    return Result.ok(nextId);
+    log.warn("DEPRECATED: saveAndNext called. Use SaveFlowController.");
+    return Result.fail(new Error("Save logic is deprecated."));
   }
+  // --- END DEPRECATED ---
 
   snapshot() {
     return {
@@ -224,9 +212,14 @@ export class CorrectionEditorController {
   }
 
   async _saveBySideKind(side) {
-    if (side === "pickup") return this.saveManual("pickup");
-    if (side === "delivery") return this.saveManual("delivery");
-    if (side === "both") return this.saveManual("both");
-    return Result.fail(new Error("Unknown side."));
+    log.warn("DEPRECATED: _saveBySideKind called. Use SaveFlowController.");
+    return Result.fail(new Error("Save logic is deprecated."));
   }
 }
+
+// Basic logger shim
+const log = {
+  info: (...args) => console.info(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
+};

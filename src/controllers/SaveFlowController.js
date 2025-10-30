@@ -1,134 +1,145 @@
 // ============================================================================
-// Frontend: Update SaveFlowController (Final Version)
+// Frontend: REWRITE SaveFlowController (Final Version)
 // FILE: src/controllers/SaveFlowController.js
-// REASON: Correctly builds payload for /approve endpoint and calls idempotent saver.
+// REASON: Implement new save logic.
+//         - Build corrected OrderEvent JSON from original.
+//         - Build ResubmitRequestDto with 'applyToSimilar' flag.
+//         - Call new api.saveResubmission endpoint.
 // ============================================================================
 // FILE: src/controllers/SaveFlowController.js
 import { Result } from "@/domain/Result";
-import { AddressEqualityService } from "@/services/AddressEqualityService"; // For diff check
+import { AddressExceptionApi } from "@/services/AddressExceptionApi";
+import { Address } from "@/domain/WorkbenchModels";
 
 /**
- * ARCHITECTURE: SaveFlowController orchestrates saving pickup/delivery/both and computing next item.
+ * ARCHITECTURE: SaveFlowController orchestrates saving a correction and advancing the queue.
  * REFACTORED:
- * - Constructs the payload for the /api/orders/{barcode}/approve endpoint.
- * - Determines 'resolveCoordinatesIfNeeded' based on mission logic.
- * - Calls the injected 'idempotentSaveController'.
+ * - Constructor now takes AddressExceptionApi.
+ * - `saveThenAwait` now implements the new "resubmission" flow.
+ * - It patches the original OrderEvent JSON with the user's edits.
+ * - It builds the ResubmitRequestDto (including correctedRawPayload and applyToSimilar).
+ * - It calls api.saveResubmission() instead of the old /approve flow.
  */
 export class SaveFlowController {
-  constructor(editorFacade, queueService, idempotentSaveController) {
+  constructor(editorFacade, queueService, api = new AddressExceptionApi()) {
     if (!editorFacade) throw new Error("SaveFlowController requires an EditorFacade.");
     if (!queueService) throw new Error("SaveFlowController requires a QueueService.");
-    if (!idempotentSaveController) throw new Error("SaveFlowController requires an IdempotentSaveController.");
+    if (!api) throw new Error("SaveFlowController requires an AddressExceptionApi.");
 
     this.editor = editorFacade;
     this.queue = queueService;
-    this.saveController = idempotentSaveController; // This is an IdempotentSaveController
-    this.eq = new AddressEqualityService(); // For diff checking
+    this.api = api;
   }
 
-  async saveThenAwait(side = "both") {
+  /**
+   * Saves the correction and advances to the next item in the queue.
+   * @param {string} side - 'pickup', 'delivery', or 'both'. (Used to check which address was edited).
+   * @param {boolean} applyToSimilar - Flag from the UI to trigger bulk reprocessing.
+   */
+  async saveThenAwait(side = "both", applyToSimilar = false) {
     const snap = this.editor.snapshot();
-    // Get necessary data from the editor snapshot
     const orderId = snap.currentOrderId || snap.editor?.detail?.orderId || null;
-    const barcode = snap.editor?.detail?.barcode || null;
-    const sourceSystem = snap.editor?.detail?.sourceSystem || null; // Get source system
 
-    if (!orderId || !barcode) {
-      log.error("[SaveFlow] Cannot save: Missing orderId or barcode in editor state.");
-      return Result.fail(new Error("SaveFlow: no order id or barcode found in editor state."));
+    // 1. Get the original error Event ID
+    const errorEventId = snap.editor?.detail?.relatedError?.eventId || null;
+    if (!errorEventId) {
+      log.error("[SaveFlow] Cannot save: Missing relatedError.eventId in editor state.", snap.editor?.detail);
+      return Result.fail(new Error("SaveFlow: Cannot save, original error event ID is missing."));
     }
 
-    // --- Logic for resolveCoordinatesIfNeeded ---
-    const allowedSources = ["DANXILS_API", "AED_SFTP", "GW_SFTP", "WMS_PINQUARK", "DANXILS_API_MULTI"]; // Added MULTI
-    const originalPickup = snap.editor?.detail?.originalPickup || null;
-    const originalDelivery = snap.editor?.detail?.originalDelivery || null;
-    // Stored address reflects the state *before* this correction attempt (from alias check)
-    const storedPickup = snap.editor?.detail?.pickupStoredAddress || null;
-    const storedDelivery = snap.editor?.detail?.deliveryStoredAddress || null;
-    // Edited address is the user's current input/selection
-    const editedPickup = snap.editor?.editedPickup || null;
-    const editedDelivery = snap.editor?.editedDelivery || null;
-
-    let resolveCoordinatesIfNeeded = false;
-
-    if (allowedSources.includes(sourceSystem)) {
-      let pickupIsNewAndChanged = false;
-      let deliveryIsNewAndChanged = false;
-
-      // Check pickup side if it's being saved
-      if ((side === "pickup" || side === "both") && editedPickup) {
-        // "Brand new" means no stored address existed (it was an ALIAS_NOT_FOUND result from TES)
-        // AND the user has manually edited it or accepted a suggestion (it's not the same as the original)
-        const pickupChangedFromOriginal = !this.eq.equals(originalPickup, editedPickup);
-        if (storedPickup === null && pickupChangedFromOriginal) {
-          pickupIsNewAndChanged = true;
-        }
-      }
-
-      // Check delivery side if it's being saved
-      if ((side === "delivery" || side === "both") && editedDelivery) {
-        const deliveryChangedFromOriginal = !this.eq.equals(originalDelivery, editedDelivery);
-        if (storedDelivery === null && deliveryChangedFromOriginal) {
-          deliveryIsNewAndChanged = true;
-        }
-      }
-
-      // Set flag if either side represents a new, modified address from an allowed source
-      if (pickupIsNewAndChanged || deliveryIsNewAndChanged) {
-        resolveCoordinatesIfNeeded = true;
-      }
+    // 2. Get the original OrderEvent payload
+    const originalEventJson = snap.editor?.detail?.originalOrderEventJson || null;
+    if (!originalEventJson) {
+      log.error("[SaveFlow] Cannot save: Missing originalOrderEventJson in editor state.", snap.editor?.detail);
+      return Result.fail(new Error("SaveFlow: Cannot save, original order payload is missing."));
     }
 
-    log.info(`[SaveFlow] For Barcode: ${barcode}, Source: ${sourceSystem}, ResolveCoords: ${resolveCoordinatesIfNeeded} (Save Side: ${side})`);
-    // --- End Logic for resolveCoordinatesIfNeeded ---
+    // 3. Reconstruct the *corrected* payload
+    let correctedPayload;
+    try {
+      correctedPayload = this._buildCorrectedPayload(
+          originalEventJson,
+          snap.editor?.editedPickup,
+          snap.editor?.editedDelivery
+      );
+    } catch (e) {
+      log.error("[SaveFlow] Failed to build corrected payload:", e.message);
+      return Result.fail(e);
+    }
 
-    // Construct the payload expected by IdempotentSaveController's save method,
-    // which in turn calls AddressExceptionApi.saveCorrection (the /approve endpoint)
-    const payload = {
-      barcode: barcode, // Required by the /approve endpoint
-      resolveCoordinatesIfNeeded: resolveCoordinatesIfNeeded, // Flag for backend
-      // Include fields needed for Idempotency Token generation within IdempotentSaveController
-      orderId: orderId,
-      side: side,
-      // 'after' represents the state being saved
-      after: {
-        pickup: (side === "pickup" || side === "both") ? editedPickup : null,
-        delivery: (side === "delivery" || side === "both") ? editedDelivery : null
-      }
+    // 4. Build the ResubmitRequestDto
+    const resubmitDto = {
+      errorEventId: errorEventId,
+      correctedRawPayload: JSON.stringify(correctedPayload),
+      applyToSimilar: !!applyToSimilar, // Pass the flag
+      // 'correctedName' is not used by the new backend flow
     };
 
-    // Call the IdempotentSaveController which handles the actual API call
-    const saveResult = await this.saveController.save(payload);
+    // 5. Call the new API endpoint
+    log.info(`[SaveFlow] Calling saveResubmission for EventID: ${errorEventId}, ApplySimilar: ${applyToSimilar}`);
+    const saveResult = await this.api.saveResubmission(errorEventId, resubmitDto);
 
-    // Check the result format from IdempotentSaveController
-    // It returns { skipped: boolean, result: Result }
-    if (saveResult?.skipped) {
-      log.warn(`[SaveFlow] Save skipped for Barcode ${barcode}. Reason: ${saveResult.reason}`);
-      // If skipped, it's not a failure, but we don't advance the queue
-      // Or do we? If it's a duplicate save, we might want to advance.
-      // For now, let's treat skipped as "not saved this time"
-      return Result.ok({ success: true, skipped: true, nextOrderId: null }); // Indicate skipped
+    if (!saveResult.ok) {
+      log.error("[SaveFlow] saveResubmission failed:", saveResult.error);
+      return Result.fail(saveResult.error); // Return failure
     }
 
-    if (!saveResult || !saveResult.result || !saveResult.result.ok) {
-      const error = saveResult?.result?.error || new Error("Save failed or invalid response from save controller.");
-      log.error(`[SaveFlow] Save failed for Barcode ${barcode}.`, error);
-      return Result.fail(error); // Return failure
-    }
+    log.info(`[SaveFlow] Save successful for Order ID ${orderId}.`);
 
-    // Save was successful
+    // 6. Advance the queue
     const currentQueueId = this.queue.current();
-    if (currentQueueId === orderId) { // Double check we are removing the correct item
+    if (currentQueueId === orderId) {
       this.queue.remove(currentQueueId);
-      log.info(`[SaveFlow] Removed Order ID ${currentQueueId} from queue after successful save.`);
+      log.info(`[SaveFlow] Removed Order ID ${currentQueueId} from queue.`);
     } else {
-      log.warn(`[SaveFlow] Current queue ID '${currentQueueId}' does not match saved Order ID '${orderId}'. Queue state might be inconsistent.`);
+      log.warn(`[SaveFlow] Queue ID ('${currentQueueId}') mismatch saved ID ('${orderId}').`);
     }
 
-    const nextId = this.queue.current() || this.queue.next(); // Get next ID
-    log.info(`[SaveFlow] Save successful for Barcode ${barcode}. Next Order ID in queue: ${nextId || 'None'}`);
+    const nextId = this.queue.current() || this.queue.next();
+    log.info(`[SaveFlow] Next Order ID in queue: ${nextId || 'None'}`);
+    return Result.ok({ success: true, skipped: false, nextOrderId: nextId });
+  }
 
-    return Result.ok({ success: true, skipped: false, nextOrderId: nextId }); // Indicate success and provide next ID
+  /**
+   * Patches the original OrderEvent JSON with fields from the edited models.
+   * @param {string} originalJsonString - The raw JSON of the original OrderEvent.
+   * @param {Address} editedPickup - The frontend Address model for pickup.
+   * @param {Address} editedDelivery - The frontend Address model for delivery.
+   * @returns {object} The patched OrderEvent object.
+   */
+  _buildCorrectedPayload(originalJsonString, editedPickup, editedDelivery) {
+    let payload;
+    try {
+      payload = JSON.parse(originalJsonString);
+    } catch (e) {
+      throw new Error("Failed to parse originalOrderEventJson: " + e.message);
+    }
+
+    // Overwrite pickup fields if the edited model is provided
+    if (editedPickup) {
+      payload.pickUpAlias = editedPickup.alias;
+      payload.pickUpName = editedPickup.name;
+      payload.pickUpStreet = editedPickup.street;
+      payload.pickUpHouseNo = editedPickup.houseNumber;
+      payload.pickUpPostalCode = editedPickup.postalCode;
+      payload.pickUpCity = editedPickup.city;
+      payload.pickUpLatitude = editedPickup.latitude;
+      payload.pickUpLongitude = editedPickup.longitude;
+    }
+
+    // Overwrite delivery fields if the edited model is provided
+    if (editedDelivery) {
+      payload.deliveryAlias = editedDelivery.alias;
+      payload.deliveryName = editedDelivery.name;
+      payload.deliveryStreet = editedDelivery.street;
+      payload.deliveryHouseNo = editedDelivery.houseNumber;
+      payload.deliveryPostalCode = editedDelivery.postalCode;
+      payload.deliveryCity = editedDelivery.city;
+      payload.deliveryLatitude = editedDelivery.latitude;
+      payload.deliveryLongitude = editedDelivery.longitude;
+    }
+
+    return payload;
   }
 }
 

@@ -1,7 +1,8 @@
 // ============================================================================
 // Frontend: Update AddressExceptionApi (Supersedes previous version)
 // FILE: src/services/AddressExceptionApi.js
-// REASON: Add missing 'getPendingByErrorType' method.
+// REASON: Add 'saveResubmission' method for new save flow.
+//         Update _getStoredAddressLabel to show raw reason codes.
 // ============================================================================
 // FILE: src/services/AddressExceptionApi.js (Supersedes previous version)
 import api from "@/services/api";
@@ -10,7 +11,8 @@ import { Address } from "@/domain/WorkbenchModels";
 
 /**
  * ARCHITECTURE: API client for address-related operations.
- * UPDATED: Added getPendingByErrorType method.
+ * UPDATED: Added saveResubmission.
+ * UPDATED: _getStoredAddressLabel now returns the raw reason code.
  */
 export class AddressExceptionApi {
     constructor() {
@@ -52,13 +54,30 @@ export class AddressExceptionApi {
                 return Result.fail(new Error(`Order details not found or invalid response for ID: ${orderId}`));
             }
 
-            const originalPickup = backendDto.pickupAddress ? Address.from(backendDto.pickupAddress) : new Address();
-            const originalDelivery = backendDto.deliveryAddress ? Address.from(backendDto.deliveryAddress) : new Address();
-            const pickupStoredDisplay = backendDto.pickupStoredAddress ? Address.from(backendDto.pickupStoredAddress) : null;
+            // --- Map Original Addresses from OrderEvent (now includes alias/name) ---
+            const originalEvent = this._safeParseJson(backendDto.originalOrderEventJson);
+
+            const originalPickup = Address.from({
+                ...backendDto.pickupAddress, // Contains street, houseNo, postal, city, lat, lon
+                alias: originalEvent?.pickUpAlias || backendDto.pickupAlias, // Get alias from event
+                name: originalEvent?.pickUpName || null // Get name from event
+            });
+
+            const originalDelivery = Address.from({
+                ...backendDto.deliveryAddress,
+                alias: originalEvent?.deliveryAlias || backendDto.deliveryAlias,
+                name: originalEvent?.deliveryName || null
+            });
+
+            // --- Map Stored Addresses (if they exist) ---
+            const pickupStoredDisplay = backendDto.pickupStoredAddress ?
+                Address.from(backendDto.pickupStoredAddress) : null;
             const deliveryStoredDisplay = backendDto.deliveryStoredAddress ? Address.from(backendDto.deliveryStoredAddress) : null;
 
+            // --- *** FIX: Show raw reason code *** ---
             const pickupStoredLabel = this._getStoredAddressLabel(backendDto.pickupReasonCode, 'Pickup');
             const deliveryStoredLabel = this._getStoredAddressLabel(backendDto.deliveryReasonCode, 'Delivery');
+            // --- *** END FIX *** ---
 
             const frontendDetail = {
                 orderId: backendDto.id,
@@ -69,19 +88,30 @@ export class AddressExceptionApi {
                 processingStatus: backendDto.processingStatus,
                 createdAt: backendDto.createdAt,
                 updatedAt: backendDto.updatedAt,
-                pickupAlias: backendDto.pickupAlias || null,
-                deliveryAlias: backendDto.deliveryAlias || null,
+
+                // --- Use the newly constructed original addresses ---
                 originalPickup: originalPickup,
                 originalDelivery: originalDelivery,
+
                 pickupReasonCode: backendDto.pickupReasonCode || null,
                 deliveryReasonCode: backendDto.deliveryReasonCode || null,
+
                 pickupStoredAddress: pickupStoredDisplay,
                 deliveryStoredAddress: deliveryStoredDisplay,
+
                 pickupStoredLabel: pickupStoredLabel,
                 deliveryStoredLabel: deliveryStoredLabel,
-                suggestedPickup: Array.isArray(backendDto.suggestedPickup) ? backendDto.suggestedPickup : [],
-                suggestedDelivery: Array.isArray(backendDto.suggestedDelivery) ? backendDto.suggestedDelivery : [],
-                relatedError: backendDto.relatedError || null
+
+                suggestedPickup: Array.isArray(backendDto.suggestedPickup) ?
+                    backendDto.suggestedPickup : [],
+                suggestedDelivery: Array.isArray(backendDto.suggestedDelivery) ?
+                    backendDto.suggestedDelivery : [],
+
+                // --- Pass original event JSON for resubmission ---
+                originalOrderEventJson: backendDto.originalOrderEventJson || null,
+
+                // Find the associated errorEventId (if any)
+                relatedError: backendDto.relatedError || null // (This DTO needs to include the eventId)
             };
             return Result.ok(frontendDetail);
         } catch (e) {
@@ -95,24 +125,42 @@ export class AddressExceptionApi {
         }
     }
 
+    /**
+     * @deprecated Old save flow. Use saveResubmission instead.
+     */
     async saveCorrection(body, idempotencyToken = null) {
-        const barcode = body?.barcode;
-        if (!barcode) {
-            return Result.fail(new Error("Barcode is required to approve the correction."));
+        log.warn("DEPRECATED: saveCorrection called. Use saveResubmission.");
+        return Result.fail(new Error("saveCorrection is deprecated. Use saveResubmission."));
+    }
+
+    /**
+     * NEW METHOD: Submits a corrected payload to resolve a processing error.
+     * This is the new "Save" logic for the editor.
+     * @param {string} errorEventId - The Event ID of the error being resolved.
+     * @param {object} resubmitPayload - The ResubmitRequestDto (correctedRawPayload, applyToSimilar).
+     */
+    async saveResubmission(errorEventId, resubmitPayload) {
+        if (!errorEventId) {
+            return Result.fail(new Error("Cannot save: Original Error Event ID is missing."));
         }
-        const approvePayload = {
-            resolveCoordinatesIfNeeded: body?.resolveCoordinatesIfNeeded || false
-        };
+        if (!resubmitPayload || !resubmitPayload.correctedRawPayload) {
+            return Result.fail(new Error("Cannot save: Corrected payload is missing."));
+        }
+
         try {
-            const headers = idempotencyToken ? { "Idempotency-Key": idempotencyToken } : {};
-            const res = await this.client.post(`/api/orders/${encodeURIComponent(barcode)}/approve`, approvePayload, { headers });
+            // POST /processing-errors/{eventId}/resubmit
+            const res = await this.client.post(
+                `/processing-errors/${encodeURIComponent(errorEventId)}/resubmit`,
+                resubmitPayload
+            );
             return Result.ok(res.data || true);
         } catch (e) {
-            console.error(`Error saving/approving correction for barcode ${barcode}:`, e);
-            const errorMessage = e.response?.data?.error || e.message || "Failed to save/approve correction.";
+            console.error(`Error saving/resubmitting correction for event ${errorEventId}:`, e);
+            const errorMessage = e.response?.data?.error || e.message || "Failed to save correction.";
             return Result.fail(new Error(errorMessage));
         }
     }
+
 
     async getTriageKpis() {
         try {
@@ -126,7 +174,6 @@ export class AddressExceptionApi {
         }
     }
 
-    // *** ADDED THIS METHOD ***
     async getPendingByErrorType() {
         try {
             const res = await this.client.get(`/api/dashboard/pending-by-error-type`);
@@ -138,7 +185,6 @@ export class AddressExceptionApi {
             return Result.fail(new Error(errorMessage));
         }
     }
-    // *** END ADDED METHOD ***
 
     async sendClientLogs(logEntries) {
         if (!Array.isArray(logEntries) || logEntries.length === 0) {
@@ -152,14 +198,28 @@ export class AddressExceptionApi {
     }
 
     async requestGetAvailableProviders() { return this.client.get(`/api/admin/address-verification/providers/available`); }
-    async requestGetCurrentProvider() { return this.client.get(`/api/admin/address-verification/providers/current`); }
-    async requestSetProvider(providerName) { return this.client.post(`/api/admin/address-verification/providers/current`, providerName, { headers: { 'Content-Type': 'text/plain' } }); }
+    async requestGetCurrentProvider() { return this.client.get(`/api/admin/address-verification/providers/current`);
+    }
+    async requestSetProvider(providerName) { return this.client.post(`/api/admin/address-verification/providers/current`, providerName, { headers: { 'Content-Type': 'text/plain' } });
+    }
     async getOperationStatus(correlationId) { return this.client.get(`/api/admin/address-verification/operations/${correlationId}`); }
 
     _getStoredAddressLabel(reasonCode, side) {
-        if (reasonCode === 'ALIAS_MATCH_CONFIRMED') return `Stored (TrackIT - Matched)`;
-        if (reasonCode === 'ALIAS_MISMATCH') return `Stored (TrackIT - Mismatch)`;
-        if (reasonCode === 'ALIAS_NOT_FOUND') return `Original ${side}`;
-        return `Stored (TrackIT - if mismatched)`;
+        // --- *** FIX: Show raw reason code *** ---
+        if (reasonCode) return reasonCode;
+        // --- *** END FIX *** ---
+
+        // Fallback for older data that might not have a reason code
+        return `Original ${side}`;
+    }
+
+    _safeParseJson(jsonString) {
+        if (!jsonString) return null;
+        try {
+            return JSON.parse(jsonString);
+        } catch (e) {
+            console.warn("Failed to parse JSON string in AddressExceptionApi:", e);
+            return null;
+        }
     }
 }
