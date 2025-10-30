@@ -526,19 +526,19 @@ export const useAddressUploadStore = defineStore('addressUpload', {
 ================================================================================
 
 // ============================================================================
-// Pinia Auth Store — unified, uses AuthApi; no '/api' anywhere
+// stores/auth.js — Canonical auth store
 // ============================================================================
-import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import { jwtDecode } from 'jwt-decode';
-import api from '@/services/Api.js';
-import { AuthApi } from '@/services/AuthApi';
+import { defineStore } from "pinia";
+import { ref, computed } from "vue";
+import { jwtDecode } from "jwt-decode";
+import apiClient from "@/services/Api.js";
+import { AuthApi } from "@/services/AuthApi.js";
 
-const AUTH_TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
-const USERNAME_KEY = 'auth_username';
+const AUTH_TOKEN_KEY = "auth_token";
+const REFRESH_TOKEN_KEY = "refresh_token";
+const USERNAME_KEY = "auth_username";
 
-export const useAuthStore = defineStore('auth', () => {
+export const useAuthStore = defineStore("auth", () => {
     const accessToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || null);
     const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || null);
     const username = ref(localStorage.getItem(USERNAME_KEY) || null);
@@ -547,32 +547,37 @@ export const useAuthStore = defineStore('auth', () => {
     const redirectPath = ref(null);
 
     const isAuthenticated = computed(() => !!accessToken.value);
-    const isAdmin = computed(() => roles.value.includes('ADMIN'));
+    const isAdmin = computed(() => roles.value.includes("ADMIN"));
 
-    const setAxiosAuthHeader = (token) => {
-        if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        else delete api.defaults.headers.common['Authorization'];
-    };
+    function decode(token) {
+        try { return jwtDecode(token); } catch { return null; }
+    }
 
-    const decode = (t) => { try { return jwtDecode(t); } catch { return null; } };
+    function applyAuthHeader(token) {
+        if (token) {
+            apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+        } else {
+            delete apiClient.defaults.headers.common["Authorization"];
+        }
+    }
 
     function setAuthData({ accessToken: at, refreshToken: rt, username: un }) {
-        accessToken.value = at;
-        refreshToken.value = rt;
-        username.value = un ?? username.value;
+        accessToken.value = at || null;
+        refreshToken.value = rt || null;
+        username.value = un || null;
 
-        const decoded = decode(at);
+        localStorage.setItem(AUTH_TOKEN_KEY, at || "");
+        localStorage.setItem(REFRESH_TOKEN_KEY, rt || "");
+        localStorage.setItem(USERNAME_KEY, un || "");
+
+        const decoded = at ? decode(at) : null;
         roles.value = decoded?.roles || [];
 
-        localStorage.setItem(AUTH_TOKEN_KEY, at);
-        localStorage.setItem(REFRESH_TOKEN_KEY, rt ?? '');
-        if (un) localStorage.setItem(USERNAME_KEY, un);
-
-        setAxiosAuthHeader(at);
+        applyAuthHeader(at);
         authError.value = null;
     }
 
-    function clearAuthData() {
+    function clearAuth() {
         accessToken.value = null;
         refreshToken.value = null;
         username.value = null;
@@ -580,63 +585,46 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem(AUTH_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
-        setAxiosAuthHeader(null);
+        applyAuthHeader(null);
         authError.value = null;
     }
 
-    const authApi = new AuthApi();
+    const api = new AuthApi();
 
-    async function login(un, pw) {
+    async function login(user, pass) {
+        authError.value = null;
         try {
-            authError.value = null;
-            const result = await authApi.login(un, pw);
-            if (result.ok) { setAuthData(result.value); return true; }
-            authError.value = result.error?.message ?? 'Login failed';
-            clearAuthData();
+            const res = await api.login(user, pass);
+            if (res.ok) {
+                setAuthData(res.value);
+                return true;
+            }
+            authError.value = res.error?.message || "Login failed";
+            clearAuth();
             return false;
         } catch (e) {
-            authError.value = e?.message || 'Login failed';
-            clearAuthData();
+            authError.value = e?.message || "Login failed";
+            clearAuth();
             return false;
         }
     }
 
-    async function refresh() {
-        if (!refreshToken.value) return false;
-        try {
-            const result = await authApi.refresh(refreshToken.value);
-            if (result.ok) { setAuthData(result.value); return true; }
-        } catch { /* ignore */ }
-        clearAuthData();
-        return false;
+    async function logout() {
+        try { await api.logout(); } finally { clearAuth(); }
     }
 
-    function logout() {
-        try { authApi.logout(); } catch { /* ignore */ }
-        clearAuthData();
-        redirectPath.value = null;
-    }
+    function setRedirect(path) { redirectPath.value = path || null; }
 
-    function checkAuth() {
-        const t = accessToken.value;
-        if (!t) { clearAuthData(); return; }
-        const decoded = decode(t);
-        if (decoded && decoded.exp * 1000 > Date.now()) {
-            roles.value = decoded.roles || [];
-            setAxiosAuthHeader(t);
-            authError.value = null;
-        } else {
-            clearAuthData();
-        }
-    }
-
-    function setRedirect(path) { redirectPath.value = path; }
-    function popRedirect() { const p = redirectPath.value; redirectPath.value = null; return p || '/worklist'; }
+    // Re-hydrate header on boot (if token cached)
+    if (accessToken.value) applyAuthHeader(accessToken.value);
 
     return {
+        // state
         accessToken, refreshToken, username, roles, authError, redirectPath,
+        // getters
         isAuthenticated, isAdmin,
-        login, refresh, logout, checkAuth, setRedirect, popRedirect,
+        // actions
+        login, logout, setRedirect,
     };
 });
 
@@ -646,12 +634,11 @@ export const useAuthStore = defineStore('auth', () => {
 ================================================================================
 
 // ============================================================================
-// Frontend: Compatibility re-export for legacy imports
-// FILE: src/stores/authStore.js
-// REASON: Prevent duplicate Pinia store definitions. Keep all existing imports
-//         working by re-exporting the canonical store from auth.js.
+// stores/authStore.js — Compatibility shim
+// Any legacy imports using '@/stores/authStore' will resolve to the canonical
+// store from '@/stores/auth' to prevent "two stores" divergence.
 // ============================================================================
-export { useAuthStore } from './auth.js';
+export * from "./auth.js";
 
 
 ================================================================================
@@ -9813,71 +9800,79 @@ const formatTimestamp = (ts) => {
 ================================================================================
 
 <template>
-  <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8 bg-gray-50">
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
-      <h2 class="text-center text-3xl font-extrabold text-blue-700 tracking-tight">
-        DANXILS Triage Workbench
-      </h2>
-      <p class="mt-2 text-center text-sm text-gray-600">Sign in to your account</p>
-    </div>
+  <div class="min-h-screen flex items-center justify-center bg-white">
+    <div class="w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6">
+      <h1 class="text-xl font-semibold text-slate-800 mb-1">Sign in</h1>
+      <p class="text-sm text-slate-500 mb-6">Use your DANXILS credentials</p>
 
-    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
-      <div class="bg-white px-6 py-12 shadow-2xl rounded-xl ring-1 ring-gray-100">
-        <form class="space-y-6" @submit.prevent="handleLogin">
-          <div>
-            <label for="username" class="block text-sm font-medium leading-6 text-gray-900">Username</label>
-            <div class="mt-2">
-              <input
-                  id="username" name="username" type="text" required v-model="credentials.username"
-                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
-                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
-              />
-            </div>
-          </div>
+      <form @submit.prevent="onSubmit" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Username</label>
+          <input
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              required
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
 
-          <div>
-            <label for="password" class="block text-sm font-medium leading-6 text-gray-900">Password</label>
-            <div class="mt-2">
-              <input
-                  id="password" name="password" type="password" required v-model="credentials.password"
-                  class="block w-full rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
-                       focus:ring-2 focus:ring-inset focus:ring-amber-500 sm:text-sm sm:leading-6"
-              />
-            </div>
-          </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
+          <input
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
 
-          <button
-              type="submit"
-              class="w-full flex justify-center py-2.5 px-4 rounded-xl font-medium text-white bg-blue-600 hover:bg-blue-700 transition"
-          >
-            Sign in
-          </button>
+        <button
+            type="submit"
+            :disabled="submitting"
+            class="w-full rounded-xl bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-semibold py-2 transition"
+        >
+          <span v-if="!submitting">Sign in</span>
+          <span v-else>Signing in…</span>
+        </button>
 
-          <p v-if="errorMessage" class="text-red-600 text-sm">{{ errorMessage }}</p>
-        </form>
-      </div>
+        <p v-if="error" class="text-sm text-red-600 mt-2">{{ error }}</p>
+      </form>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
-import apiClient from '@/services/Api.js';
+import { ref } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useAuthStore } from "@/stores/auth.js";
 
-const credentials = reactive({ username: '', password: '' });
-const errorMessage = ref('');
+const auth = useAuthStore();
+const router = useRouter();
+const route = useRoute();
 
-const handleLogin = async () => {
-  errorMessage.value = '';
-  try {
-    await apiClient.post('/api/auth/login', credentials);
-    // Router guard should redirect after auth binds token
-    window.location.assign('/worklist');
-  } catch (e) {
-    errorMessage.value = 'Login failed';
+const username = ref("");
+const password = ref("");
+const submitting = ref(false);
+const error = ref("");
+
+async function onSubmit() {
+  error.value = "";
+  submitting.value = true;
+  const ok = await auth.login(username.value, password.value);
+  submitting.value = false;
+
+  if (ok) {
+    const next = auth.redirectPath || route.query?.redirect || "/worklist";
+    router.replace(String(next));
+  } else {
+    error.value = auth.authError || "Invalid credentials.";
   }
-};
+}
 </script>
+
+<!-- Intentionally no <style> block to avoid PostCSS mis-parse while you stabilize. -->
 
 
 ================================================================================
@@ -13302,23 +13297,55 @@ export class AddressSuggestionRanker {
 ================================================================================
 
 // ============================================================================
-// Axios Client — same-origin, no /api prefix
+// services/Api.js
+// Single axios client with safe baseURL resolution and path normalization.
+// - Dev: VITE_API_BASE_URL="/" → same-origin; Vite proxy handles CORS.
+// - Prod: leave VITE_API_BASE_URL empty or set to "/" so NGINX routes:
+//         /auth/*  → api.danxils.com/auth/*
+//         /api/*   → api.danxils.com/api/*
+// Also normalizes any accidental "/api/auth/*" to "/auth/*" for login flows.
 // ============================================================================
-import axios from 'axios';
+import axios from "axios";
+
+function resolveBaseUrl() {
+    const w = typeof window !== "undefined" ? window : {};
+    const winBase = (w.__API_BASE_URL__ || "").trim();
+    const viteBase = (import.meta?.env?.VITE_API_BASE_URL || "").trim();
+    const base = winBase || viteBase;
+    if (!base || base === "/") return "/";        // same-origin; proxy/nginx handle
+    return base.replace(/\/+$/, "");
+}
 
 const api = axios.create({
-    baseURL: '/', // ← do NOT use '/api'
+    baseURL: resolveBaseUrl(),
     withCredentials: true,
     headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        Accept: "application/json",
+        "Content-Type": "application/json",
     },
 });
 
+// --- Request normalizer ------------------------------------------------------
+// If someone passes "/api/auth/login", rewrite to "/auth/login".
+// This protects us from legacy code or accidental prefixes.
+api.interceptors.request.use((config) => {
+    if (typeof config.url === "string") {
+        const u = config.url;
+        // Only fix the three auth endpoints; leave other /api/* alone.
+        const fixed = u
+            .replace(/^\/api\/auth\/login(\b|\/)/, "/auth/login$1")
+            .replace(/^\/api\/auth\/refresh(\b|\/)/, "/auth/refresh$1")
+            .replace(/^\/api\/auth\/logout(\b|\/)/, "/auth/logout$1");
+        if (fixed !== u) config.url = fixed;
+    }
+    return config;
+});
+
+// --- Response error mapper (lightweight) ------------------------------------
 api.interceptors.response.use(
     (res) => res,
     (err) => {
-        err.message = err?.response?.data?.message || err.message || 'Request failed';
+        err.message = err?.response?.data?.message || err.message || "Request failed";
         return Promise.reject(err);
     }
 );
@@ -13439,25 +13466,28 @@ export class ApiErrorMapper {
 ================================================================================
 
 // ============================================================================
-// AuthApi — thin wrapper around the shared axios client
-// Endpoints match backend exactly: /auth/login, /auth/refresh, /auth/logout
+// services/AuthApi.js
+// Calls backend exactly at /auth/login|refresh|logout
 // ============================================================================
-import api from '@/services/Api.js';
+import api from "@/services/Api.js";
 
 export class AuthApi {
   async login(username, password) {
-    const { data } = await api.post('/auth/login', { username, password });
-    // Expect { accessToken, refreshToken, username, ... }
+    const { data } = await api.post("/auth/login", { username, password });
     return { ok: true, value: data };
   }
 
   async refresh(refreshToken) {
-    const { data } = await api.post('/auth/refresh', { refreshToken });
+    const { data } = await api.post("/auth/refresh", { refreshToken });
     return { ok: true, value: data };
   }
 
   async logout() {
-    await api.post('/auth/logout');
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // best-effort
+    }
     return { ok: true };
   }
 }
@@ -15351,43 +15381,38 @@ export class EditorRouteGuard {
 ### PLIK: router/index.js
 ================================================================================
 
-import { createRouter as createVueRouter, createWebHistory } from 'vue-router';
-import { useAuthStore } from '@/stores/auth.js';
-
-import WorklistView from '@/views/WorklistView.vue';
-import CorrectionEditorView from '@/views/CorrectionEditorView.vue';
-import LoginView from '@/views/LoginView.vue';
-import LogsView from '@/views/LogsView.vue';
-import ShowcasePro from '@/views/ShowcasePro.vue';
+// ============================================================================
+// router/index.js — adds meta.hideShell for /login and consistent guards
+// ============================================================================
+import { createRouter as createVueRouter, createWebHistory } from "vue-router";
+import { useAuthStore } from "@/stores/auth.js";
+import WorklistView from "@/views/WorklistView.vue";
+import CorrectionEditorView from "@/views/CorrectionEditorView.vue";
+import LoginView from "@/views/LoginView.vue";
+import LogsView from "@/views/LogsView.vue";
 
 export const createRouter = () => {
   const routes = [
-    { path: '/login', name: 'login', component: LoginView, meta: { public: true, hideShell: true } }, // 👈
-    { path: '/', redirect: '/worklist' },
-
-    { path: '/worklist', name: 'worklist', component: WorklistView, meta: { requiresAuth: true } },
-    { path: '/editor/:id', name: 'editor', component: CorrectionEditorView, meta: { requiresAuth: true } },
-    { path: '/logs', name: 'logs', component: LogsView, meta: { requiresAuth: true, requiresAdmin: true } },
-    { path: '/pro', name: 'showcase-pro', component: ShowcasePro, meta: { requiresAuth: true } },
-
-    { path: '/:pathMatch(.*)*', redirect: '/worklist' },
+    { path: "/login", name: "login", component: LoginView, meta: { hideShell: true } },
+    { path: "/", redirect: "/worklist" },
+    { path: "/worklist", name: "worklist", component: WorklistView, meta: { requiresAuth: true } },
+    { path: "/editor/:id", name: "editor", component: CorrectionEditorView, meta: { requiresAuth: true } },
+    { path: "/logs", name: "logs", component: LogsView, meta: { requiresAuth: true, requiresAdmin: true } },
   ];
 
   const router = createVueRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes,
-    scrollBehavior: () => ({ top: 0 }),
   });
 
   router.beforeEach((to, _from, next) => {
     const auth = useAuthStore();
-    if (to.meta.public) return next();
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
-      auth.setRedirect?.(to.fullPath);
-      return next({ name: 'login' });
+      auth.setRedirect(to.fullPath);
+      return next({ name: "login" });
     }
     if (to.meta.requiresAdmin && !auth.isAdmin) {
-      return next({ name: 'worklist' });
+      return next({ name: "worklist" });
     }
     return next();
   });

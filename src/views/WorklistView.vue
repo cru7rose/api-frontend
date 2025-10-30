@@ -1,259 +1,161 @@
 <script setup>
-import {ref, computed, onMounted, watch} from 'vue';
-import {useRouter} from 'vue-router';
-import {useWorklistStore} from "@/stores/WorklistStore.js";
-import {storeToRefs} from 'pinia';
-import {EditorNavigationController} from '@/controllers/EditorNavigationController';
-import StatusBadge from '@/components/common/StatusBadge.vue';
+import { onMounted, ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useWorklistStore } from '@/stores/WorklistStore.js';
 
-const store = useWorklistStore();
 const router = useRouter();
-const nav = new EditorNavigationController();
+const store = useWorklistStore();
 
-// Use storeToRefs to keep reactivity on store state
-// --- FIX: 'filters' ref is now the domain object, 'selection' is the array ---
-const {items, pagination, loading, error, filters, selection} = storeToRefs(store);
-
-// localFilter is now a reactive copy for the v-model bindings
-const localFilter = ref({...filters.value.toPlainObject()});
-
-// Watch for changes in the store's filter (e.g., after reset) and update local copy
-watch(filters, (newFilterState) => {
-  localFilter.value = {...newFilterState.toPlainObject()};
-}, {deep: true});
-
-// Fetch data when component mounts
-onMounted(async () => {
-  // --- FIX: Call correct store method ---
-  await store.loadWorklist();
-  // Ensure local filter is in sync with store after initial load
-  localFilter.value = {...store.filters.toPlainObject()};
+const filters = ref({
+  customerId: '',
+  status: 'PENDING_VERIFICATION',
+  page: 0,
+  size: 25,
+  sort: 'ingestedAt,desc'
 });
 
-const handleApplyFilter = () => {
-  // --- FIX: Call correct store method ---
-  store.setFilters(localFilter.value);
+const loading = computed(() => store.loading);
+const rows = computed(() => store.items || []);
+const page = computed(() => store.page || 0);
+const totalPages = computed(() => store.totalPages || 1);
+
+const reload = async () => {
+  await store.fetch({
+    customerId: filters.value.customerId || undefined,
+    status: filters.value.status || undefined,
+    page: filters.value.page,
+    size: filters.value.size,
+    sort: filters.value.sort
+  });
+};
+const reset = async () => {
+  filters.value.customerId = '';
+  filters.value.status = 'PENDING_VERIFICATION';
+  filters.value.page = 0;
+  await reload();
 };
 
-const handleResetFilter = () => {
-  // --- FIX: Call correct store method ---
-  store.handleResetFilter(); // This will trigger the watcher to update localFilter.value
+const openEditor = (id) => router.push({ name: 'editor', params: { id } });
+
+const formatDate = (iso) => {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
 };
 
-const goToEditor = (orderId) => {
-  // --- FIX: Use correct property names ---
-  const navState = {filter: store.filters.toPlainObject(), page: pagination.value.page};
-  router.push(nav.toEditor(orderId, 'worklist', navState));
-};
-
-// --- Selection Helpers ---
-const isAllSelectedOnPage = computed(() => {
-  const pageIds = items.value.map(item => item.id);
-  // --- FIX: Use 'selection' ref ---
-  return pageIds.length > 0 && pageIds.every(id => selection.value.includes(id));
-});
-
-const toggleSelectAll = () => {
-  if (isAllSelectedOnPage.value) {
-    // --- FIX: Call correct store method ---
-    store.clearSelection();
-  } else {
-    // --- FIX: Call correct store method ---
-    store.selectAllOnPage();
-  }
-};
-
-// --- Pagination ---
-const handlePageChange = (newPage) => {
-  // --- FIX: Call correct store method ---
-  store.setPage(newPage);
-};
-
-// Formatting helper
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  try {
-    return new Date(dateString).toLocaleString();
-  } catch (e) {
-    return dateString;
-  }
-};
+onMounted(reload);
 </script>
 
 <template>
-  <div class="worklist-view card">
-
-    <div class="filter-controls">
-      <input type="text" v-model="localFilter.barcode" placeholder="Barcode..."/>
-      <input type="text" v-model="localFilter.customerId" placeholder="Customer ID..."/>
-      <select v-model="localFilter.status">
-        <option value="">All Statuses</option>
-        <option value="PENDING_VERIFICATION">Pending Verification</option>
-        <option value="AWAITING_ALIAS_CHECK">Awaiting Alias Check</option>
-        <option value="HAPPY_PATH_MATCHED">Happy Path Matched</option>
-        <option value="APPROVED">Approved</option>
-        <option value="SENT_TO_TRACKIT">Sent to TrackIT</option>
-        <option value="ACK_TRACKIT">In TrackIT (Ack)</option>
-        <option value="CDC_EVENT">CDC Event</option>
-        <option value="INGESTED">Ingested</option>
-        <option value="FAILED">Failed</option>
-      </select>
-      <input type="date" v-model="localFilter.dateFrom" title="Created Date From"/>
-      <input type="date" v-model="localFilter.dateTo" title="Created Date To"/>
-
-      <button @click="handleApplyFilter" class="button">Apply Filters</button>
-      <button @click="handleResetFilter" class="button secondary">Reset Filters</button>
-    </div>
-
-    <div v-if="loading" class="loading-indicator">Loading worklist...</div>
-    <div v-if="error" class="error-message">{{ error }}</div>
-
-    <div v-if="!loading && !error" class="worklist-content">
-      <div class="table-actions">
-        <span>Selected: {{ selection.length }}</span>
+  <div class="mx-auto max-w-[1600px] px-4 py-6">
+    <header class="flex items-center justify-between gap-3 mb-4">
+      <h1 class="text-2xl font-semibold text-slate-900">Worklist</h1>
+      <div class="flex items-center gap-2">
+        <input
+            v-model="filters.customerId"
+            type="text"
+            placeholder="Customer ID…"
+            class="input"
+        />
+        <select v-model="filters.status" class="input">
+          <option value="PENDING_VERIFICATION">Pending Verification</option>
+          <option value="NEEDS_REVIEW">Needs Review</option>
+          <option value="">Any</option>
+        </select>
+        <button class="btn-primary" @click="reload">Apply Filters</button>
+        <button class="btn-ghost" @click="reset">Reset</button>
       </div>
+    </header>
 
-      <table class="worklist-table">
-        <thead>
-        <tr>
-          <th><input type="checkbox" :checked="isAllSelectedOnPage" @change="toggleSelectAll"/></th>
-          <th>Barcode</th>
-          <th>Customer ID</th>
-          <th>Status</th>
-          <th>Created At</th>
-          <th>Updated At</th>
-          <th>Actions</th>
+    <div class="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gradient-to-r from-yellow-50 to-blue-50 border-b border-slate-200">
+        <tr class="text-slate-700">
+          <th class="th">Pickup</th>
+          <th class="th">Delivery</th>
+          <th class="th">Barcode</th>
+          <th class="th">Customer ID</th>
+          <th class="th">Status</th>
+          <th class="th">Created</th>
+          <th class="th">Updated</th>
+          <th class="th text-right">Actions</th>
         </tr>
         </thead>
         <tbody>
-        <tr v-if="items.length === 0">
-          <td colspan="7">No orders found for the current filters.</td>
+        <tr v-for="r in rows" :key="r.id" class="row">
+          <td class="td">
+            <div class="addr">
+              <div class="line">
+                {{ r?.originalPickup?.street || '—' }} {{ r?.originalPickup?.houseNo || '' }}
+              </div>
+              <div class="muted">
+                {{ r?.originalPickup?.postalCode || '' }} {{ r?.originalPickup?.city || '' }}
+              </div>
+            </div>
+          </td>
+          <td class="td">
+            <div class="addr">
+              <div class="line">
+                {{ r?.originalDelivery?.street || '—' }} {{ r?.originalDelivery?.houseNo || '' }}
+              </div>
+              <div class="muted">
+                {{ r?.originalDelivery?.postalCode || '' }} {{ r?.originalDelivery?.city || '' }}
+              </div>
+            </div>
+          </td>
+          <td class="td font-mono">{{ r?.barcode }}</td>
+          <td class="td">{{ r?.customerId }}</td>
+          <td class="td">
+              <span class="status" :data-variant="r?.processingStatus || 'UNKNOWN'">
+                {{ r?.processingStatus || 'UNKNOWN' }}
+              </span>
+          </td>
+          <td class="td">{{ formatDate(r?.ingestedAt) }}</td>
+          <td class="td">{{ formatDate(r?.updatedAt) }}</td>
+          <td class="td text-right">
+            <button class="btn-blue" @click="openEditor(r.id)">Open</button>
+          </td>
         </tr>
-        <tr v-for="item in items" :key="item.id" :class="{ 'selected-row': selection.includes(item.id) }">
-          <td><input type="checkbox" :checked="selection.includes(item.id)" @change="store.toggleSelection(item.id)"/>
-          </td>
-          <td>{{ item.barcode }}</td>
-          <td>{{ item.customerId }}</td>
-          <td>
-            <StatusBadge :status="item.processingStatus"/>
-          </td>
-          <td>{{ formatDate(item.createdAt) }}</td>
-          <td>{{ formatDate(item.updatedAt) }}</td>
-          <td>
-            <button @click="goToEditor(item.id)" class="button">Open</button>
-          </td>
+
+        <tr v-if="!loading && rows.length === 0">
+          <td colspan="8" class="py-12 text-center text-slate-400">No results.</td>
         </tr>
         </tbody>
       </table>
+    </div>
 
-      <div class="pagination-controls" v-if="pagination.totalPages > 1">
-        <button @click="handlePageChange(pagination.page - 1)" :disabled="pagination.page <= 1">Previous</button>
-        <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ({{ pagination.totalElements }} items)</span>
-        <button @click="handlePageChange(pagination.page + 1)" :disabled="pagination.page >= pagination.totalPages">
-          Next
-        </button>
+    <!-- Pagination (simple) -->
+    <div class="mt-4 flex items-center justify-between text-sm text-slate-600">
+      <div>Page {{ page + 1 }} / {{ totalPages }}</div>
+      <div class="flex gap-2">
+        <button class="btn-ghost" :disabled="page <= 0" @click="filters.page = page - 1; reload()">Prev</button>
+        <button class="btn-ghost" :disabled="page >= totalPages - 1" @click="filters.page = page + 1; reload()">Next</button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.worklist-view {
-  /* Inherits card styles */
+.input {
+  @apply h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30;
 }
-
-.filter-controls {
-  display: flex;
-  flex-wrap: wrap; /* Allow wrapping on smaller screens */
-  gap: var(--spacing-unit);
-  margin-bottom: calc(var(--spacing-unit) * 2);
-  padding-bottom: calc(var(--spacing-unit) * 2);
-  border-bottom: 1px solid var(--color-border);
+.btn-primary {
+  @apply inline-flex items-center h-9 rounded-lg px-3 text-sm font-medium text-slate-900 bg-yellow-300 hover:bg-yellow-400 transition;
 }
-
-.filter-controls input,
-.filter-controls select {
-  padding: var(--spacing-unit);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  flex-grow: 1; /* Allow inputs to grow */
-  min-width: 150px; /* Minimum width for inputs */
+.btn-ghost {
+  @apply inline-flex items-center h-9 rounded-lg px-3 text-sm text-slate-700 hover:bg-slate-100;
 }
-
-.filter-controls input[type="date"] {
-  flex-grow: 0; /* Don't let date inputs grow too much */
+.btn-blue {
+  @apply inline-flex items-center h-8 rounded-md px-3 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700;
 }
-
-.filter-controls button {
-  flex-grow: 0; /* Don't let button grow */
+.th { @apply text-left font-semibold px-4 py-3; }
+.td { @apply px-4 py-3 align-top; }
+.row { @apply border-b border-slate-100 hover:bg-yellow-50/50 transition-colors; }
+.addr .line { @apply text-slate-900; }
+.addr .muted { @apply text-slate-500 text-xs; }
+.status {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border;
+  border-color: rgb(226 232 240);
 }
-
-.loading-indicator, .error-message {
-  padding: calc(var(--spacing-unit) * 2);
-  margin-bottom: calc(var(--spacing-unit) * 2);
-  border-radius: 4px;
-}
-
-.loading-indicator {
-  background-color: #f0f0f0;
-}
-
-.error-message {
-  background-color: var(--color-danger);
-  color: white;
-}
-
-.worklist-content {
-  /* Styles for table and actions */
-}
-
-.table-actions {
-  margin-bottom: var(--spacing-unit);
-  color: var(--color-text-light);
-}
-
-.worklist-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: calc(var(--spacing-unit) * 2);
-}
-
-.worklist-table th,
-.worklist-table td {
-  border: 1px solid var(--color-border);
-  padding: var(--spacing-unit);
-  text-align: left;
-  vertical-align: middle;
-}
-
-.worklist-table th {
-  background-color: #f8f9fa;
-  font-weight: 600;
-}
-
-.selected-row {
-  background-color: #fff3cd; /* Light yellow for selected rows */
-}
-
-.pagination-controls {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: var(--spacing-unit);
-  margin-top: calc(var(--spacing-unit) * 2);
-}
-
-.pagination-controls button {
-  padding: calc(var(--spacing-unit) * 0.5) var(--spacing-unit);
-  cursor: pointer;
-}
-
-.pagination-controls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.pagination-controls span {
-  color: var(--color-text-light);
-}
+.status[data-variant="NEEDS_REVIEW"] { @apply bg-yellow-50 text-yellow-700; }
+.status[data-variant="PENDING_VERIFICATION"] { @apply bg-blue-50 text-blue-700; }
 </style>
