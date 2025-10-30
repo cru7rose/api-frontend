@@ -1,14 +1,14 @@
 // ============================================================================
 // Frontend: Update MapViewportPolicyController.js
 // FILE: src/controllers/MapViewportPolicyController.js
-// REASON: Refactor methods to be side-aware (pickup vs. delivery)
-//         to support showing two different markers and the route.
+// REASON: Remove non-existent 'this.map.clearAll()' call.
 // ============================================================================
 /**
  * ARCHITECTURE: MapViewportPolicyController centralizes how the editor focuses the map.
  * It follows the manifesto by hiding viewport decisions behind a minimal, deterministic API.
  * REFACTORED: Now accepts a 'side' parameter to control either the
  * pickup (green) or delivery (red) marker, and adds 'showAndFitRoute'.
+ * FIX: Removed non-existent clearAll() call.
  */
 export class MapViewportPolicyController {
   constructor(mapController) {
@@ -46,9 +46,9 @@ export class MapViewportPolicyController {
 
     try {
       if (side === 'pickup') {
-        await this.map.updatePickupMarker(lat, lon, true); // true = recenter
+        await this.map.updatePickupMarker(lat, lon, true);
       } else if (side === 'delivery') {
-        await this.map.updateDeliveryMarker(lat, lon, true); // true = recenter
+        await this.map.updateDeliveryMarker(lat, lon, true);
       } else {
         // Fallback for old calls, defaults to pickup
         await this.map.updatePickupMarker(lat, lon, true);
@@ -75,14 +75,13 @@ export class MapViewportPolicyController {
     let deliveryValid = Number.isFinite(dLat) && Number.isFinite(dLon);
 
     try {
-      // Clear any old markers/routes first
-      this.map.clearAll();
+      // *** FIX: Removed this.map.clearAll() call ***
 
       if (pickupValid) {
-        await this.map.updatePickupMarker(pLat, pLon, false); // false = don't zoom
+        await this.map.updatePickupMarker(pLat, pLon, false);
       }
       if (deliveryValid) {
-        await this.map.updateDeliveryMarker(dLat, dLon, false); // false = don't zoom
+        await this.map.updateDeliveryMarker(dLat, dLon, false);
       }
 
       // If both are valid, draw the route and fit the bounds

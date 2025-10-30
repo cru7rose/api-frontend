@@ -1,31 +1,125 @@
+<template>
+  <div class="p-4 sm:p-6 lg:p-8">
+    <div v-if="state.loading" class="text-center">
+      <p>Loading order details...</p>
+    </div>
+    <div v-else-if="state.error" class="text-red-500 text-center">
+      <p>
+        Failed to load order details: {{ state.error }}
+        <span v-if="orderId"> (ID: {{ orderId }})</span>
+      </p>
+    </div>
+
+    <div v-else-if="state.detail" class="space-y-8">
+      <PageHeader
+          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
+          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
+      />
+
+      <div class="mt-8">
+        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
+        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
+          <p>
+            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AddressCorrectionCard
+            title="Pickup Address"
+            side="pickup"
+            :original-address="state.detail.originalPickup"
+            :stored-address="state.detail.pickupStoredAddress"
+            :reason-code="state.detail.pickupReasonCode"
+            :is-pending="isPending"
+            :editable-address="state.editedPickup"
+            :geocode-loading="state.geocodeLoading"
+            @update:editableAddress="updateAddress('pickup', $event)"
+            @geocode="handleGeocode('pickup')"
+            @save="handleSave('pickup')"
+            @use-original="handleUseOriginal('pickup')"
+        />
+
+        <AddressCorrectionCard
+            title="Delivery Address"
+            side="delivery"
+            :original-address="state.detail.originalDelivery"
+            :stored-address="state.detail.deliveryStoredAddress"
+            :reason-code="state.detail.deliveryReasonCode"
+            :is-pending="isPending"
+            :editable-address="state.editedDelivery"
+            :geocode-loading="state.geocodeLoading"
+            @update:editableAddress="updateAddress('delivery', $event)"
+            @geocode="handleGeocode('delivery')"
+            @save="handleSave('delivery')"
+            @use-original="handleUseOriginal('delivery')"
+        />
+      </div>
+
+      <div
+          v-if="isPending"
+          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
+      >
+        <div class="flex items-center">
+          <input
+              id="applyToSimilar"
+              type="checkbox"
+              v-model="applyToSimilar"
+              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
+          >Apply this correction to all similar pending errors</label
+          >
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button
+              @click="handleSave('both')"
+              :disabled="state.saveLoading"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+          >
+            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
+        <p class="font-semibold text-gray-700 dark:text-gray-200">
+          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
+          {{ state.detail.processingStatus }})
+        </p>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-// *** FIX: Changed import from .ts to .js ***
-import { useToast } from '@/composables/useToast.js';
-// *** END FIX ***
+import {ref, reactive, computed, onMounted, onUnmounted, inject, nextTick} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+import {useToast} from '@/composables/useToast.js';
 import PageHeader from '@/components/PageHeader.vue';
 import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
 
 // Import Manifesto architecture controllers
-import { MapController } from "@/controllers/MapController.js";
-import { EditorFacade } from "@/controllers/EditorFacade.js";
-import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
-import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
-import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
-import { Address } from '@/domain/WorkbenchModels.js';
+import {MapController} from "@/controllers/MapController.js";
+import {EditorFacade} from "@/controllers/EditorFacade.js";
+import {SaveFlowController} from "@/controllers/SaveFlowController.js";
+import {IdempotentSaveController} from "@/controllers/IdempotentSaveController.js";
+import {EditorCommandBus} from "@/controllers/EditorCommandBus.js";
+import {useWorklistStore} from '@/stores/WorklistStore.js'; // To get the queue
+import {Address} from '@/domain/WorkbenchModels.js';
 
 // === Injections ===
 const orchestrator = inject("orchestrator");
 const geoRuntime = inject("geoRuntime");
-const showNotification = inject("showNotification"); // Use global notification
-const toast = useToast(); // Use composable toast for more flexibility
+const showNotification = inject("showNotification");
+const toast = useToast();
 
 // === Route & Store ===
 const route = useRoute();
 const router = useRouter();
-const worklistStore = useWorklistStore(); // Used for the "next item" queue
+const worklistStore = useWorklistStore();
 const orderId = ref(route.params.id);
 
 // === Local State ===
@@ -39,11 +133,10 @@ const state = reactive({
   saveLoading: false,
 });
 const applyToSimilar = ref(false);
-const routeInfo = ref(null); // To store distance/duration
+const routeInfo = ref(null);
 const mapContainer = ref(null); // DOM ref for map
 
 // === Controller Setup ===
-// We create controllers here, in setup(), so they are reactive to this component's instance
 let mapController = null;
 let editorFacade = null;
 let saveFlow = null;
@@ -61,32 +154,19 @@ onMounted(async () => {
     return;
   }
 
-  // 1. Initialize Map Controller
-  try {
-    const mapAdapter = geoRuntime.mapAdapter();
-    mapController = new MapController(mapAdapter);
-    await nextTick(); // Wait for DOM
-    if (mapContainer.value) {
-      await mapController.init(mapContainer.value, { lat: 52.23, lon: 21.01, zoom: 6 });
-    } else {
-      throw new Error("Map container DOM element not found.");
-    }
-  } catch (err) {
-    log.error("Failed to initialize MapController:", err);
-    toast.error("Failed to load map: " + err.message, 10000);
-    // Continue without map if it fails
-  }
+  // *** FIX: DO NOT initialize map here. ***
+  // We must wait for state.detail to be populated so the <div> exists.
+  // Map init is moved to loadOrderData()
 
-  // 2. Initialize Editor Facade (passing the map)
-  editorFacade = orchestrator.getEditor(mapController);
+  // 1. Initialize Editor Facade (mapController is null for now)
+  editorFacade = orchestrator.getEditor(null);
 
-  // 3. Initialize Save Controllers
-  // Note: IdempotentSaveController is deprecated, but SaveFlowController uses it
+  // 2. Initialize Save Controllers
   const saveController = new IdempotentSaveController();
   saveFlow = new SaveFlowController(editorFacade, worklistStore, saveController);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
 
-  // 4. Load Order Data
+  // 3. Load Order Data (this will now also init the map)
   await loadOrderData();
 });
 
@@ -102,6 +182,15 @@ async function loadOrderData() {
   state.loading = true;
   state.error = null;
 
+  // --- This is the fix ---
+  // Destroy the old map if we are reloading (e.g., navigating from editor to editor)
+  if (mapController) {
+    await mapController.destroy();
+    mapController = null;
+    editorFacade.preview = null;
+  }
+  // --- End fix ---
+
   const result = await editorFacade.load(orderId.value);
 
   if (result.ok) {
@@ -110,7 +199,42 @@ async function loadOrderData() {
     state.editedPickup = snap.editedPickup;
     state.editedDelivery = snap.editedDelivery;
 
-    // After load, facade's 'load' method already drew the route.
+    // *** FIX: Initialize map controller *after* state.detail exists ***
+    try {
+      const mapAdapter = geoRuntime.mapAdapter();
+      mapController = new MapController(mapAdapter);
+
+      await nextTick(); // Wait for DOM to render the v-if="state.detail" block
+
+      if (mapContainer.value) {
+        await mapController.init(mapContainer.value, {lat: 52.23, lon: 21.01, zoom: 6});
+        // Now that map is real, inject it into the facade's previewer
+        editorFacade.preview = orchestrator.createPreviewController(mapController);
+        log.info("MapController initialized successfully.");
+      } else {
+        throw new Error("Map container DOM element not found even after nextTick.");
+      }
+    } catch (err) {
+      log.error("Failed to initialize MapController:", err);
+      toast.error("Failed to load map: " + err.message, 10000);
+      // Continue without map if it fails
+    }
+    // *** END FIX ***
+
+    // Facade's 'load' method already drew the route, but the map didn't exist yet.
+    // We must re-draw it now.
+    if (editorFacade.preview) {
+      try {
+        await editorFacade.preview.policy.showAndFitRoute(
+            state.editedPickup,
+            state.editedDelivery
+        );
+        log.info("Initial route and markers drawn.");
+      } catch (e) {
+        log.error("Failed to draw initial route:", e);
+      }
+    }
+
     // We just need to fetch the stats (dist/duration) for display.
     await refreshRouteInfo();
 
@@ -233,13 +357,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
+        router.push({name: 'worklist'});
       }
     } else {
       throw result.error;
