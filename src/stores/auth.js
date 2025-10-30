@@ -1,22 +1,17 @@
 // ============================================================================
-// Frontend: Fix auth.js store (Supersedes previous version)
-// FILE: src/stores/auth.js
-// REASON: Corrects the import for the API client (default export)
-//         and uses the correct method for setting the auth header
-//         on the axios instance.
+// Pinia Auth Store — unified, uses AuthApi; no '/api' anywhere
 // ============================================================================
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
+import api from '@/services/Api.js';
 import { AuthApi } from '@/services/AuthApi';
-import apiClient from '@/services/Api.js'; // default axios instance
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USERNAME_KEY = 'auth_username';
 
 export const useAuthStore = defineStore('auth', () => {
-    // --- State ---
     const accessToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || null);
     const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY) || null);
     const username = ref(localStorage.getItem(USERNAME_KEY) || null);
@@ -24,31 +19,27 @@ export const useAuthStore = defineStore('auth', () => {
     const authError = ref(null);
     const redirectPath = ref(null);
 
-    // --- Getters ---
     const isAuthenticated = computed(() => !!accessToken.value);
     const isAdmin = computed(() => roles.value.includes('ADMIN'));
 
-    // --- Helpers ---
-    const decodeToken = (t) => {
-        try { return jwtDecode(t); } catch { return null; }
+    const setAxiosAuthHeader = (token) => {
+        if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        else delete api.defaults.headers.common['Authorization'];
     };
 
-    const setAxiosAuthHeader = (token) => {
-        if (token) apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        else delete apiClient.defaults.headers.common['Authorization'];
-    };
+    const decode = (t) => { try { return jwtDecode(t); } catch { return null; } };
 
     function setAuthData({ accessToken: at, refreshToken: rt, username: un }) {
         accessToken.value = at;
         refreshToken.value = rt;
-        username.value = un;
+        username.value = un ?? username.value;
 
-        const decoded = decodeToken(at);
+        const decoded = decode(at);
         roles.value = decoded?.roles || [];
 
         localStorage.setItem(AUTH_TOKEN_KEY, at);
-        localStorage.setItem(REFRESH_TOKEN_KEY, rt);
-        localStorage.setItem(USERNAME_KEY, un);
+        localStorage.setItem(REFRESH_TOKEN_KEY, rt ?? '');
+        if (un) localStorage.setItem(USERNAME_KEY, un);
 
         setAxiosAuthHeader(at);
         authError.value = null;
@@ -59,16 +50,13 @@ export const useAuthStore = defineStore('auth', () => {
         refreshToken.value = null;
         username.value = null;
         roles.value = [];
-
         localStorage.removeItem(AUTH_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
-
         setAxiosAuthHeader(null);
         authError.value = null;
     }
 
-    // --- Actions ---
     const authApi = new AuthApi();
 
     async function login(un, pw) {
@@ -76,28 +64,39 @@ export const useAuthStore = defineStore('auth', () => {
             authError.value = null;
             const result = await authApi.login(un, pw);
             if (result.ok) { setAuthData(result.value); return true; }
-            authError.value = result.error.message;
+            authError.value = result.error?.message ?? 'Login failed';
             clearAuthData();
             return false;
-        } catch {
-            authError.value = 'An unexpected error occurred during login.';
+        } catch (e) {
+            authError.value = e?.message || 'Login failed';
             clearAuthData();
             return false;
         }
     }
 
+    async function refresh() {
+        if (!refreshToken.value) return false;
+        try {
+            const result = await authApi.refresh(refreshToken.value);
+            if (result.ok) { setAuthData(result.value); return true; }
+        } catch { /* ignore */ }
+        clearAuthData();
+        return false;
+    }
+
     function logout() {
+        try { authApi.logout(); } catch { /* ignore */ }
         clearAuthData();
         redirectPath.value = null;
     }
 
     function checkAuth() {
-        const token = accessToken.value;
-        if (!token) { clearAuthData(); return; }
-        const decoded = decodeToken(token);
+        const t = accessToken.value;
+        if (!t) { clearAuthData(); return; }
+        const decoded = decode(t);
         if (decoded && decoded.exp * 1000 > Date.now()) {
             roles.value = decoded.roles || [];
-            setAxiosAuthHeader(token);
+            setAxiosAuthHeader(t);
             authError.value = null;
         } else {
             clearAuthData();
@@ -110,6 +109,6 @@ export const useAuthStore = defineStore('auth', () => {
     return {
         accessToken, refreshToken, username, roles, authError, redirectPath,
         isAuthenticated, isAdmin,
-        login, logout, checkAuth, setRedirect, popRedirect,
+        login, refresh, logout, checkAuth, setRedirect, popRedirect,
     };
 });

@@ -1,29 +1,22 @@
 // ============================================================================
-// Axios Client: Simple, Reliable, Same-Origin
-// Back-end endpoints (expose):   /auth/login, /auth/refresh, /worklist, ...
-// Front-end calls (use):         api.get('/auth/login')  → nginx → backend
+// Axios Client — same-origin, no /api prefix
 // ============================================================================
-
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/',                     // ✅ NO "/api" prefix
-  withCredentials: true,
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-  },
+    baseURL: '/', // ← do NOT use '/api'
+    withCredentials: true,
+    headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+    },
 });
 
-// Nice readable errors:
 api.interceptors.response.use(
-    response => response,
-    error => {
-      error.message =
-          error?.response?.data?.message ||
-          error.message ||
-          'Request failed';
-      return Promise.reject(error);
+    (res) => res,
+    (err) => {
+        err.message = err?.response?.data?.message || err.message || 'Request failed';
+        return Promise.reject(err);
     }
 );
 
