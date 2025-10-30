@@ -123,7 +123,7 @@
 
 <script setup>
 import Navbar from '@/components/layout/Navbar.vue'
-import Sidebar from '@/components/layout/Sidebar.vue'
+import Sidebar from '@/components/Sidebar.vue'
 
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
