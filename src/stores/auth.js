@@ -9,9 +9,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { AuthApi } from '@/services/AuthApi';
-// *** THIS IS THE FIX ***
-import apiClient from '@/services/Api.js'; // <-- Import the default export
-// *** END FIX ***
+import apiClient from '@/services/Api.js'; // default axios instance
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
@@ -30,43 +28,33 @@ export const useAuthStore = defineStore('auth', () => {
     const isAuthenticated = computed(() => !!accessToken.value);
     const isAdmin = computed(() => roles.value.includes('ADMIN'));
 
-    // --- Internal Helpers ---
-    function _decodeToken(token) {
-        try {
-            return jwtDecode(token);
-        } catch (e) {
-            console.error("Failed to decode token:", e);
-            return null;
-        }
-    }
+    // --- Helpers ---
+    const decodeToken = (t) => {
+        try { return jwtDecode(t); } catch { return null; }
+    };
 
-    function _setAuthData(authData) {
-        const token = authData.accessToken;
-        const refToken = authData.refreshToken;
-        const user = authData.username;
-        const decoded = _decodeToken(token);
+    const setAxiosAuthHeader = (token) => {
+        if (token) apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        else delete apiClient.defaults.headers.common['Authorization'];
+    };
 
-        accessToken.value = token;
-        refreshToken.value = refToken;
-        username.value = user;
+    function setAuthData({ accessToken: at, refreshToken: rt, username: un }) {
+        accessToken.value = at;
+        refreshToken.value = rt;
+        username.value = un;
+
+        const decoded = decodeToken(at);
         roles.value = decoded?.roles || [];
 
-        localStorage.setItem(AUTH_TOKEN_KEY, token);
-        localStorage.setItem(REFRESH_TOKEN_KEY, refToken);
-        localStorage.setItem(USERNAME_KEY, user);
+        localStorage.setItem(AUTH_TOKEN_KEY, at);
+        localStorage.setItem(REFRESH_TOKEN_KEY, rt);
+        localStorage.setItem(USERNAME_KEY, un);
 
-        // --- FIX: Set header on the imported axios instance ---
-        if (token) {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        } else {
-            delete apiClient.defaults.headers.common['Authorization'];
-        }
-        // --- END FIX ---
-
+        setAxiosAuthHeader(at);
         authError.value = null;
     }
 
-    function _clearAuthData() {
+    function clearAuthData() {
         accessToken.value = null;
         refreshToken.value = null;
         username.value = null;
@@ -76,86 +64,52 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USERNAME_KEY);
 
-        // --- FIX: Clear the auth header ---
-        delete apiClient.defaults.headers.common['Authorization'];
-        // --- END FIX ---
-
+        setAxiosAuthHeader(null);
         authError.value = null;
     }
 
     // --- Actions ---
     const authApi = new AuthApi();
 
-    async function login(username, password) {
+    async function login(un, pw) {
         try {
             authError.value = null;
-            const result = await authApi.login(username, password);
-
-            if (result.ok) {
-                _setAuthData(result.value);
-                return true;
-            } else {
-                authError.value = result.error.message;
-                _clearAuthData();
-                return false;
-            }
-        } catch (e) {
-            authError.value = "An unexpected error occurred during login.";
-            _clearAuthData();
+            const result = await authApi.login(un, pw);
+            if (result.ok) { setAuthData(result.value); return true; }
+            authError.value = result.error.message;
+            clearAuthData();
+            return false;
+        } catch {
+            authError.value = 'An unexpected error occurred during login.';
+            clearAuthData();
             return false;
         }
     }
 
     function logout() {
-        _clearAuthData();
-        redirectPath.value = null; // Clear redirect path on logout
+        clearAuthData();
+        redirectPath.value = null;
     }
 
     function checkAuth() {
-        // This is called on app load
         const token = accessToken.value;
-        if (token) {
-            const decoded = _decodeToken(token);
-            if (decoded && decoded.exp * 1000 > Date.now()) {
-                // Token is valid and not expired
-                roles.value = decoded.roles || [];
-                // --- FIX: Set header on the imported axios instance ---
-                apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                // --- END FIX ---
-                authError.value = null;
-            } else {
-                // Token is expired or invalid
-                console.warn("Auth token is expired or invalid, logging out.");
-                _clearAuthData();
-            }
+        if (!token) { clearAuthData(); return; }
+        const decoded = decodeToken(token);
+        if (decoded && decoded.exp * 1000 > Date.now()) {
+            roles.value = decoded.roles || [];
+            setAxiosAuthHeader(token);
+            authError.value = null;
         } else {
-            _clearAuthData();
+            clearAuthData();
         }
     }
 
-    function setRedirect(path) {
-        redirectPath.value = path;
-    }
-
-    function popRedirect() {
-        const path = redirectPath.value;
-        redirectPath.value = null;
-        return path || '/worklist'; // Default redirect
-    }
+    function setRedirect(path) { redirectPath.value = path; }
+    function popRedirect() { const p = redirectPath.value; redirectPath.value = null; return p || '/worklist'; }
 
     return {
-        accessToken,
-        refreshToken,
-        username,
-        roles,
-        authError,
-        redirectPath,
-        isAuthenticated,
-        isAdmin,
-        login,
-        logout,
-        checkAuth,
-        setRedirect,
-        popRedirect,
+        accessToken, refreshToken, username, roles, authError, redirectPath,
+        isAuthenticated, isAdmin,
+        login, logout, checkAuth, setRedirect, popRedirect,
     };
 });
