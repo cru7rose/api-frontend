@@ -3,6 +3,7 @@
 // FILE: src/stores/adminOrderStore.js (NEW FILE)
 // REASON: Implements Request 2: State management for the new Order Admin view.
 // REASON (UPDATE): Added reactive filters and logic to apply them.
+// REASON (UPDATE): Added deleteOrder action.
 // ============================================================================
 import { defineStore } from 'pinia';
 import apiClient from '@/services/api';
@@ -22,7 +23,6 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         field: 'lastUpdatedAt',
         direction: 'DESC',
     });
-    // *** ADDED: Filters state ***
     const filters = reactive({
         barcode: '',
         source: '',
@@ -45,13 +45,11 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
             sort: `${sort.field},${sort.direction}`,
         });
 
-        // *** ADDED: Append filters to params ***
         if (filters.barcode) params.set('barcode', filters.barcode);
         if (filters.source) params.set('source', filters.source);
         if (filters.status) params.set('status', filters.status);
         if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
         if (filters.dateTo) params.set('dateTo', filters.dateTo);
-        // *** END ADDED ***
 
         try {
             const response = await apiClient.get(`/api/admin/orders/all?${params.toString()}`);
@@ -98,6 +96,42 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         }
     }
 
+    // *** ADDED: deleteOrder action ***
+    async function deleteOrder(orderId, barcode) {
+        if (!orderId) {
+            toast.error("Order ID is required.");
+            return;
+        }
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiClient.delete(`/api/admin/orders/${orderId}`);
+
+            // Remove the order from the local list
+            const index = orders.value.findIndex(o => o.id === orderId);
+            if (index !== -1) {
+                orders.value.splice(index, 1);
+                pagination.totalItems--; // Decrement total
+            }
+
+            toast.success(`Successfully deleted order ${barcode} (ID: ${orderId}).`);
+
+            // If the page is now empty, go back one page
+            if (orders.value.length === 0 && pagination.currentPage > 0) {
+                setPage(pagination.currentPage - 1);
+            }
+
+        } catch (err) {
+            console.error(`Failed to delete order ${orderId}:`, err);
+            error.value = err.response?.data?.error || err.message || `Failed to delete order ${orderId}.`;
+            toast.error(error.value, 10000);
+        } finally {
+            loading.value = false;
+        }
+    }
+    // *** END ADDED ***
+
+
     function setPage(pageNumber) {
         if (pageNumber >= 0 && pageNumber < (pagination.totalPages || 1) ) {
             pagination.currentPage = pageNumber;
@@ -116,7 +150,6 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         fetchAllOrders();
     }
 
-    // *** ADDED: Filter actions ***
     function applyFilters() {
         pagination.currentPage = 0;
         fetchAllOrders();
@@ -130,7 +163,6 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         filters.dateTo = '';
         applyFilters();
     }
-    // *** END ADDED ***
 
 
     // --- Return Store ---
@@ -138,14 +170,15 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         orders,
         pagination,
         sort,
-        filters, // Expose filters
+        filters,
         loading,
         error,
         fetchAllOrders,
         changeOrderStatus,
+        deleteOrder, // Expose delete action
         setPage,
         setSort,
-        applyFilters, // Expose action
-        resetFilters, // Expose action
+        applyFilters,
+        resetFilters,
     };
 });

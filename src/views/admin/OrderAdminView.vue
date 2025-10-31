@@ -113,8 +113,7 @@
             Last Updated <span v-html="sortIcon('lastUpdatedAt')"></span>
           </th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Change Status
-          </th>
+            Actions </th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
             ID
           </th>
@@ -136,8 +135,8 @@
           </td>
           <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDate(order.updatedAt) }}</td>
           <td class="px-4 py-3 whitespace-nowrap text-sm">
-            <div class="flex gap-2">
-              <select v-model="statusChange[order.id]" class="form-select">
+            <div class="flex gap-2 items-center">
+              <select v-model="statusChange[order.id]" class="form-select" title="Change status">
                 <option disabled value="">Select new status...</option>
                 <option v-for="status in adminSelectableStatuses(order.processingStatus)" :key="status.value" :value="status.value">
                   {{ status.label }}
@@ -149,6 +148,13 @@
                   class="button-secondary text-xs"
                   title="Apply status change">
                 Apply
+              </button>
+              <button
+                  @click="handleDelete(order.id, order.barcode)"
+                  :disabled="store.loading"
+                  class="button-danger text-xs"
+                  title="Delete this order">
+                Del
               </button>
             </div>
           </td>
@@ -188,7 +194,6 @@ import { useToast } from '@/composables/useToast';
 const store = useAdminOrderStore();
 const toast = useToast();
 
-// *** MODIFIED: This list contains *all* statuses for the filter dropdown ***
 const allStatuses = [
   "INGESTED",
   "AWAITING_ALIAS_CHECK",
@@ -201,18 +206,15 @@ const allStatuses = [
   "FAILED"
 ];
 
-// This list is for the *action* dropdown (Change Status)
 const adminStatusOptions = [
   { value: "PENDING_VERIFICATION", label: "Reset to Pending Review" },
   { value: "FAILED", label: "Mark as Failed" },
   { value: "ACK_TRACKIT", label: "Mark as Completed (ACK_TRACKIT)" },
 ];
 
-// Local state for the action dropdowns, keyed by order ID
 const statusChange = ref({});
 
 onMounted(() => {
-  // Use applyFilters to load initial data, which respects any default filters
   store.applyFilters();
 });
 
@@ -238,6 +240,14 @@ const handleChangeStatus = (orderId) => {
   }
 };
 
+// *** ADDED: Delete handler ***
+const handleDelete = (orderId, barcode) => {
+  if (confirm(`Are you sure you want to PERMANENTLY DELETE order ${barcode} (ID: ${orderId})?\n\nThis action cannot be undone.`)) {
+    store.deleteOrder(orderId, barcode);
+  }
+};
+// *** END ADDED ***
+
 const sortIcon = (field) => {
   if (store.sort.field === field) {
     return store.sort.direction === 'ASC' ? '&#9650;' : '&#9660;';
@@ -254,56 +264,55 @@ const formatDate = (dateString) => {
 
 <style scoped>
 /* Scoped styles */
-.form-input, .form-select {
-  padding: 0.5rem 0.75rem; /* 8px 12px */
-  font-size: 0.875rem; /* 14px */
-  border: 1px solid #d1d5db; /* gray-300 */
-  border-radius: 0.375rem; /* 6px */
+.form-select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
   background-color: #fff;
-  width: 100%;
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
-.form-label {
-  display: block;
-  margin-bottom: 0.25rem; /* 4px */
-  font-size: 0.75rem; /* 12px */
-  font-weight: 500;
-  color: #4b5563; /* gray-600 */
+  flex-shrink: 1; /* Allow select to shrink */
 }
 
-.button-primary {
-  padding: 0.5rem 1rem;
-  background-color: var(--color-primary);
-  color: white;
+.button-primary, .button-secondary, .button-danger {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
   border-radius: 0.375rem;
   font-weight: 500;
-  transition: background-color 0.2s ease;
-  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.button-primary {
+  background-color: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
 }
 .button-primary:hover:not(:disabled) {
   background-color: #004a9c;
 }
-.button-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 .button-secondary {
-  padding: 0.5rem 0.75rem;
   background-color: #f3f4f6;
   color: #374151;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  transition: background-color 0.2s ease;
+  border-color: #d1d5db;
 }
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb;
 }
-.button-secondary:disabled {
+
+/* *** ADDED: Danger button style *** */
+.button-danger {
+  background-color: #fef2f2; /* red-50 */
+  color: #b91c1c; /* red-700 */
+  border-color: #fecaca; /* red-300 */
+}
+.button-danger:hover:not(:disabled) {
+  background-color: #fee2e2; /* red-100 */
+  color: #991b1b; /* red-800 */
+}
+/* *** END ADDED *** */
+
+
+.button-primary:disabled, .button-secondary:disabled, .button-danger:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
