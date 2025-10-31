@@ -2,6 +2,8 @@
 // Frontend ➜ router/index.js (Final Version)
 // REASON: Ensure GeoRuntime is passed, guards are correctly instantiated and used.
 // REASON (REQ 2): Add new route for OrderAdminView.
+// REASON (FIX): Remove deprecated AuthSessionService and use Pinia authStore
+//               as the single source of truth for all auth checks (isAuthenticated and isAdmin).
 // ============================================================================
 // FILE: src/router/index.js
 
@@ -14,23 +16,25 @@ import LogDashboardView from "@/views/LogDashboardView.vue";
 import AedAdminView from "@/views/AedAdminView.vue";
 import HubRulesView from "@/views/HubRulesView.vue";
 import AddressUploadView from "@/views/AddressUploadView.vue";
-import OrderAdminView from "@/views/admin/OrderAdminView.vue"; // *** ADDED (REQ 2) ***
+import OrderAdminView from "@/views/admin/OrderAdminView.vue";
+// *** ADDED (REQ 2) ***
 import { AuthGuard } from "@/router/AuthGuard";
 import { EditorRouteGuard } from "@/router/EditorRouteGuard";
-import { AuthSessionService } from "@/services/AuthSessionService";
+// *** REMOVED: import { AuthSessionService } from "@/services/AuthSessionService"; ***
+import { useAuthStore } from "@/stores/authStore"; // *** ADDED: Import Pinia store ***
 
 /**
  * ARCHITECTURE: Creates the Vue Router with guards for authentication and editor prerequisites.
  * REFACTORED: Added routes for Hub Rules, Address Upload, AED SFTP Admin. Corrected admin role check.
  * UPDATED (REQ 2): Added new admin route for /admin/orders.
+ * UPDATED (FIX): Removed AuthSessionService dependency, now uses Pinia store (useAuthStore) directly.
  */
 export function createRouter(geoRuntime) { // GeoRuntime must be passed from main.js
   if (!geoRuntime) throw new Error("createRouter requires a GeoRuntime instance.");
 
   const editorGuard = new EditorRouteGuard(geoRuntime);
   const authGuard = new AuthGuard();
-  const authSession = new AuthSessionService();
-  // For role checking
+  // *** REMOVED: const authSession = new AuthSessionService(); ***
 
   const routes = [
     { path: "/", redirect: "/login" },
@@ -94,8 +98,10 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
     {
       path: "/:pathMatch(.*)*",
       redirect: to => {
-        // Use session service to check current auth state without async call
-        return authSession.isAuthenticated() ? '/dashboard' : '/login';
+        // *** FIX: Get store inside redirect function ***
+        const authStore = useAuthStore();
+        // *** FIX: Use Pinia store for check ***
+        return authStore.isAuthenticated ? '/dashboard' : '/login';
       }
     },
   ];
@@ -107,10 +113,13 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
 
   // Global Navigation Guard
   router.beforeEach(async (to, from, next) => {
+    // *** FIX: Get Pinia store instance inside the hook ***
+    const authStore = useAuthStore();
+
     // 1. Skip auth checks for the login page itself
     if (to.path === '/login') {
-      // If already authenticated, redirect away from login to dashboard
-      if (authSession.isAuthenticated()) {
+      // *** FIX: Use Pinia store for check ***
+      if (authStore.isAuthenticated) {
         next('/dashboard');
       } else {
         next(); // Allow access to login if not authenticated
@@ -121,12 +130,13 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
     // 2. Check if the route requires authentication
     if (to.meta.requiresAuth || to.meta.requiresAdmin) {
       try {
-        // Verify authentication using the AuthGuard
+        // Verify authentication using the AuthGuard (which now uses the Pinia store)
         await authGuard.canEnter(to); // This throws if not authenticated
 
         // 3. Check for Admin role if required
-        if (to.meta.requiresAdmin && !authSession.hasRole('ADMIN')) {
-          console.warn("AuthGuard: Admin role required for", to.path, ". User roles:", authSession.getUser()?.roles, "Redirecting to dashboard.");
+        // *** FIX: Use Pinia store's getter (isAdmin) for role check ***
+        if (to.meta.requiresAdmin && !authStore.isAdmin) {
+          console.warn("AuthGuard: Admin role required for", to.path, ". User roles:", authStore.user?.roles || '[]', "Redirecting to dashboard.");
           next("/dashboard"); // Redirect non-admins trying to access admin pages
           return;
         }
