@@ -67,8 +67,8 @@
             <div class="flex gap-2">
               <select v-model="statusChange[order.id]" class="form-select">
                 <option disabled value="">Select new status...</option>
-                <option v-for="status in allStatuses" :key="status" :value="status">
-                  {{ status }}
+                <option v-for="status in adminSelectableStatuses(order.processingStatus)" :key="status.value" :value="status.value">
+                  {{ status.label }}
                 </option>
               </select>
               <button
@@ -89,7 +89,7 @@
 
       <div class="py-3 px-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
         <div class="text-xs text-slate-600">
-          Page {{ store.pagination.currentPage + 1 }} / {{ store.pagination.totalPages }} ({{ store.pagination.totalElements }} orders)
+          Page {{ store.pagination.currentPage + 1 }} / {{ store.pagination.totalPages }} ({{ store.pagination.totalItems }} orders)
         </div>
         <div class="flex space-x-1.5">
           <button @click="store.setPage(store.pagination.currentPage - 1)" :disabled="store.pagination.currentPage === 0 || store.loading"
@@ -116,17 +116,11 @@ import { useToast } from '@/composables/useToast';
 const store = useAdminOrderStore();
 const toast = useToast();
 
-// Statuses from the backend enum
-const allStatuses = [
-  "INGESTED",
-  "AWAITING_ALIAS_CHECK",
-  "CDC_EVENT",
-  "HAPPY_PATH_MATCHED",
-  "PENDING_VERIFICATION",
-  "APPROVED",
-  "SENT_TO_TRACKIT",
-  "ACK_TRACKIT",
-  "FAILED"
+// *** MODIFIED: Simplified list of logical admin actions ***
+const adminStatusOptions = [
+  { value: "PENDING_VERIFICATION", label: "Reset to Pending Review" },
+  { value: "FAILED", label: "Mark as Failed" },
+  { value: "ACK_TRACKIT", label: "Mark as Completed (ACK_TRACKIT)" },
 ];
 
 // Local state for the dropdowns, keyed by order ID
@@ -135,6 +129,17 @@ const statusChange = ref({});
 onMounted(() => {
   store.fetchAllOrders();
 });
+
+// *** NEW FUNCTION: Filter list to only show logical next steps ***
+const adminSelectableStatuses = (currentStatus) => {
+  return adminStatusOptions.filter(opt => {
+    // Don't show the option to set the status to what it already is
+    if (opt.value === currentStatus) return false;
+    // Don't show "Reset to Pending" if it's already pending
+    if (opt.value === "PENDING_VERIFICATION" && currentStatus === "PENDING_VERIFICATION") return false;
+    return true;
+  });
+};
 
 const handleChangeStatus = (orderId) => {
   const newStatus = statusChange.value[orderId];
