@@ -2,6 +2,8 @@
 // Frontend: Update IntegrationOrchestrator (Final Version)
 // FILE: src/controllers/IntegrationOrchestrator.js
 // REASON: Instantiate GeocodeWithCacheController correctly.
+// REASON: Fix getEditor logic to correctly create SuggestionPreviewController
+//         when mapController is provided after initial instantiation.
 // ============================================================================
 // FILE: src/controllers/IntegrationOrchestrator.js
 import { OrdersQueueService } from "@/services/OrdersQueueService";
@@ -12,12 +14,15 @@ import { CorrectionEditorController } from "@/controllers/CorrectionEditorContro
 import { EditorFacade } from "@/controllers/EditorFacade";
 // Import GeocodeWithCacheController
 import { GeocodeWithCacheController } from "@/controllers/GeocodeWithCacheController";
+// *** ADDED IMPORT ***
+import { SuggestionPreviewController } from "@/controllers/SuggestionPreviewController";
 
 /**
  * ARCHITECTURE: Central factory/provider for core application controllers and services.
  * Injects dependencies like GeoRuntime and MapController to construct facades.
  * REFACTORED: Requests adapters from GeoRuntime without specifying provider type.
  * FIX: Instantiates GeocodeWithCacheController here to pass to EditorFacade.
+ * FIX: getEditor now correctly creates SuggestionPreviewController.
  */
 export class IntegrationOrchestrator {
   constructor(geoRuntime, mapController) { // mapController might be null initially
@@ -30,7 +35,6 @@ export class IntegrationOrchestrator {
     this.polling = new PollingService();
     this._worklist = null;
     this._editor = null;
-
     // Instantiate shared GeocodeWithCacheController using the provided GeoRuntime
     // This assumes GeoRuntime.init() will be called before geocodeController.geocode() is needed.
     this._geocodeController = new GeocodeWithCacheController(this._geoRuntime);
@@ -46,10 +50,17 @@ export class IntegrationOrchestrator {
   getEditor(mapControllerInstance = null) { // Allow passing map controller if created later
     // If an editor instance already exists, return it
     if (this._editor) {
-      // If a new map controller is provided (e.g., editor view re-created), update it
-      if (mapControllerInstance && this._editor.preview) {
-        this._editor.preview.map = mapControllerInstance; // Update the map controller in the preview helper
+      // *** FIX ***
+      if (mapControllerInstance) {
+        if (this._editor.preview) {
+          // If preview exists, just update its map controller
+          this._editor.preview.map = mapControllerInstance;
+        } else {
+          // If preview is null (was initted with null), create it now
+          this._editor.preview = new SuggestionPreviewController(mapControllerInstance);
+        }
       }
+      // *** END FIX ***
       return this._editor;
     }
 
@@ -74,7 +85,6 @@ export class IntegrationOrchestrator {
 
     // Instantiate CorrectionEditorController, passing the shared GeocodeWithCacheController
     const ctrl = new CorrectionEditorController(this.api, this._geocodeController);
-
     // Instantiate EditorFacade, passing the relevant components
     this._editor = new EditorFacade(
         ctrl,

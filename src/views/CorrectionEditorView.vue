@@ -10,13 +10,14 @@
       </p>
     </div>
 
+
     <div v-else-if="state.detail" class="space-y-8">
       <PageHeader
           :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
           :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
       />
 
-      <div class="mt-8" style="min-height: 400px">
+      <div class="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg p-4">
         <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
         <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
           <p>
@@ -25,8 +26,8 @@
           </p>
         </div>
       </div>
-
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         <AddressCorrectionCard
             title="Pickup Address"
             side="pickup"
@@ -158,6 +159,7 @@ onMounted(async () => {
   editorFacade = orchestrator.getEditor(null);
 
   // 2. Initialize Save Controllers
+  // This is deprecated, but SaveFlowController defaults to AddressExceptionApi
   const saveController = new IdempotentSaveController();
   saveFlow = new SaveFlowController(editorFacade, worklistStore, saveController);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
@@ -188,12 +190,19 @@ watch(mapContainer, async (newMapEl) => {
       mapController = new MapController(mapAdapter);
       await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
 
-      // Inject the map into the facade
-      editorFacade.preview = orchestrator.createPreviewController(mapController);
+      // *** BUG FIX ***
+      // The original code called 'orchestrator.createPreviewController', which does not exist.
+      // The correct way is to call 'getEditor' again, passing the new mapController.
+      // The orchestrator's getEditor logic (now fixed) will inject this into the
+      // existing facade's preview property.
+      editorFacade = orchestrator.getEditor(mapController);
+      // *** END BUG FIX ***
+
       log.info("MapController initialized and injected into facade.");
 
       // Now draw the initial route
       if (state.editedPickup && state.editedDelivery) {
+        // Use facade.preview, which is now guaranteed to exist
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
             state.editedDelivery
@@ -257,7 +266,6 @@ async function refreshRouteInfo() {
 
   const p = state.editedPickup;
   const d = state.editedDelivery;
-
   if (!p?.longitude || !p?.latitude || !d?.longitude || !d?.latitude) {
     routeInfo.value = null;
     return;
@@ -344,7 +352,6 @@ function handleUseOriginal(side) {
 async function handleSave(side) {
   state.saveLoading = true;
   let result;
-
   try {
     if (side === 'pickup') {
       toast.info("Saving pickup and fetching next order...", 3000);
@@ -360,13 +367,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
+        router.push({name: 'worklist'});
       }
     } else {
       throw result.error;
