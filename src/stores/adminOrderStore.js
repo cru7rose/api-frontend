@@ -83,7 +83,7 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
     }
 
     function setPage(pageNumber) {
-        if (pageNumber >= 0 && pageNumber < pagination.totalPages) {
+        if (pageNumber >= 0 && pageNumber < (pagination.totalPages || 1) ) {
             pagination.currentPage = pageNumber;
             fetchAllOrders();
         }
