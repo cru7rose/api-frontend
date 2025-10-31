@@ -37,7 +37,7 @@
             <AddressDisplay
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.pickupStoredAddress"
-                vif="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
+                v-if="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Pickup Suggestions"
@@ -76,7 +76,7 @@
             <AddressDisplay
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.deliveryStoredAddress"
-                vif="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
+                v-if="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Delivery Suggestions"
@@ -292,7 +292,7 @@ async function loadOrderData() {
   // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
   if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
+    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
     state.detail = snap.detail;
     state.editedPickup = snap.editedPickup;
     state.editedDelivery = snap.editedDelivery;
@@ -366,7 +366,7 @@ function handleAcceptSuggestion(side, suggestionIndex) {
     commandBus.acceptDelivery(suggestionIndex);
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot().editor;
+  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
   state.editedPickup = snap.editedPickup;
   state.editedDelivery = snap.editedDelivery;
 
@@ -382,7 +382,7 @@ async function handleGeocode(side) {
 
   const result = await editorFacade.geocodeAndFocus(side);
   if (result.ok) {
-    const snap = editorFacade.snapshot().editor;
+    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
     if (side === 'pickup') {
       state.editedPickup = snap.editedPickup;
     } else {
@@ -411,7 +411,7 @@ function handleUseOriginal(side) {
     commandBus.useOriginalDelivery();
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot().editor;
+  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
   state.editedPickup = snap.editedPickup;
   state.editedDelivery = snap.editedDelivery;
 

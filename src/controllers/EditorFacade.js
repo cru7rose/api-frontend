@@ -77,7 +77,8 @@ export class EditorFacade {
   }
 
   snapshot() {
-    return { editor: this.ctrl.snapshot(), currentOrderId: this.ctrl?.detail?.orderId || null };
+    // *** BUGFIX: Return the direct snapshot from the controller ***
+    return this.ctrl.snapshot();
   }
 
   setManualPickup(addr) {
