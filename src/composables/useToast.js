@@ -1,10 +1,4 @@
-// ============================================================================
-// Frontend: Add useToast.js
-// FILE: src/composables/useToast.js (NEW FILE - JS Version)
-// REASON: Provides toast notifications.
-Converted to JS for project consistency.
-// ============================================================================
-    import { useToast as useVueToast } from 'vue-toastification'
+import { useToast as useVueToast } from 'vue-toastification'
 
 /**
  * Custom composable for showing toasts.
