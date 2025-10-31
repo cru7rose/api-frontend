@@ -1,20 +1,20 @@
 // ============================================================================
 // Frontend: Update NominatimGeocodingAdapter
 // FILE: src/adapters/NominatimGeocodingAdapter.js
-// REASON: Change hardcoded default URL to use the '/nominatim' proxy path.
+// REASON: Change hardcoded default URL to use the '/nominatim/search.php' proxy path.
 // REASON: Remove hardcoded '/search' path, as it's now in the config URL.
 // ============================================================================
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 import { AddressNormalizer } from '@/services/AddressNormalizer';
 /**
  * ARCHITECTURE: NominatimGeocodingAdapter wraps OpenStreetMap Nominatim API for geocoding.
- * REFACTORED: Default URL now points to the proxy path '/nominatim/search'.
+ * REFACTORED: Default URL now points to the proxy path '/nominatim/search.php'.
  * REFACTORED: Adapter no longer appends '/search'.
  */
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
         // *** FIX: Apply defaults internally to handle null/undefined inputs ***
-        const effectiveUrl = nominatimUrl || '/nominatim/search'; // *** UPDATED DEFAULT ***
+        const effectiveUrl = nominatimUrl || '/nominatim/search.php'; // *** UPDATED DEFAULT ***
         const effectiveEmail = email || 'triage-app@example.com';
         // *** END FIX ***
 
@@ -47,7 +47,7 @@ export class NominatimGeocodingAdapter {
             email: this.email,
         });
 
-        // *** FIX: Removed hardcoded '/search' ***
+        // *** FIX: No longer appends '/search' ***
         const url = `${this.baseUrl}?${params.toString()}`;
         // *** END FIX ***
 

@@ -1,7 +1,7 @@
 // ============================================================================
 // Frontend: Update main.js
 // REASON: Default OSRM routing URL to the proxy path '/osrm'.
-// REASON: Fix Nominatim default URL to include /search.
+// REASON: Fix Nominatim default URL to include /search.php.
 // REASON: Provide geoRuntime to the Vue app instance.
 // ============================================================================
 // FILE: src/main.js
@@ -32,19 +32,17 @@ import '@/assets/theme.css';
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
 
-        // Use the proxy path, not a direct IP
-        // *** FIX: Add /search to the default path ***
-        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search',
+        // *** THIS IS THE FIX FOR 406 Not Acceptable ***
+        // Your server requires search.php
+        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search.php',
 
-        // *** THIS IS THE FIX FOR "Routing: None" ***
-        // It tells GeoRuntime to use the '/osrm' proxy path
+        // Use the proxy path, not a direct IP
         routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey =
         config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
 
     const geoRuntime = new GeoRuntime(geoProviderConfig);
-
     // 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
@@ -55,7 +53,6 @@ import '@/assets/theme.css';
 
     const router = createRouter(geoRuntime);
     const app = createApp(App);
-
     app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
     window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
     window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));

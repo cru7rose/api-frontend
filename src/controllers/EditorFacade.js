@@ -1,13 +1,16 @@
 // ============================================================================
 // Frontend: Update EditorFacade.js
 // FILE: src/controllers/EditorFacade.js
-// REASON: Draw markers and route on load. Pass 'side' to preview controller.
+// REASON: Draw markers and route on load.
+//         Pass 'side' to preview controller.
+// REASON (NEW): Add geocode-on-load logic if coordinates are missing.
 // ============================================================================
 /**
  * ARCHITECTURE: EditorFacade wraps CorrectionEditorController and adds map preview conveniences.
  * It follows the manifesto by exposing intent methods used by the Editor view without leaking internals.
  * REFACTORED:
  * - 'load' now draws both markers and the OSRM route on success.
+ * - 'load' now automatically geocodes pickup/delivery if coordinates are missing.
  * - 'accept...Suggestion' methods now pass the correct 'side' to the previewer.
  */
 import { Result } from "@/domain/Result";
@@ -22,17 +25,43 @@ export class EditorFacade {
 
   async load(orderId) {
     const loadResult = await this.ctrl.loadOrder(orderId);
+    if (!loadResult.ok) {
+      return loadResult;
+    }
+
+    // --- NEW: Geocode on load if coordinates are missing ---
+    let snap = this.ctrl.snapshot();
+    let geocodeNeeded = false;
+
+    const p = snap.editor?.editedPickup;
+    if (p && (p.latitude == null || p.longitude == null)) {
+      log.info(`[EditorFacade] Pickup (Barcode: ${snap.editor?.detail?.barcode}) missing coordinates. Geocoding on load.`);
+      await this.ctrl.geocodeEdited("pickup");
+      geocodeNeeded = true;
+    }
+
+    const d = snap.editor?.editedDelivery;
+    if (d && (d.latitude == null || d.longitude == null)) {
+      log.info(`[EditorFacade] Delivery (Barcode: ${snap.editor?.detail?.barcode}) missing coordinates. Geocoding on load.`);
+      await this.ctrl.geocodeEdited("delivery");
+      geocodeNeeded = true;
+    }
+
+    if (geocodeNeeded) {
+      snap = this.ctrl.snapshot(); // Refresh snapshot after geocoding
+    }
+    // --- END NEW ---
+
 
     // --- NEW: Draw markers and route on load ---
-    if (loadResult.ok && this.preview) {
+    if (this.preview) {
       try {
-        const snap = this.ctrl.snapshot();
-        // Use editedPickup/Delivery which are initialized from the originals
-        if (snap.editedPickup && snap.editedDelivery) {
+        // Use editedPickup/Delivery which are initialized from the originals (and now geocoded)
+        if (snap.editor.editedPickup && snap.editor.editedDelivery) {
           log.info("[EditorFacade] Loading complete. Drawing initial markers and route.");
           await this.preview.policy.showAndFitRoute(
-              snap.editedPickup,
-              snap.editedDelivery
+              snap.editor.editedPickup,
+              snap.editor.editedDelivery
           );
         }
       } catch (e) {
@@ -70,14 +99,14 @@ export class EditorFacade {
   acceptPickupSuggestion(i = 0) {
     const r = this.ctrl.acceptSuggestion("pickup", i);
     // --- UPDATED: Pass side to previewer ---
-    if (this.preview && r.ok) this.preview.show("pickup", this.ctrl.snapshot().editedPickup);
+    if (this.preview && r.ok) this.preview.show("pickup", this.ctrl.snapshot().editor.editedPickup);
     return r.ok ? Result.ok(true) : r;
   }
 
   acceptDeliverySuggestion(i = 0) {
     const r = this.ctrl.acceptSuggestion("delivery", i);
     // --- UPDATED: Pass side to previewer ---
-    if (this.preview && r.ok) this.preview.show("delivery", this.ctrl.snapshot().editedDelivery);
+    if (this.preview && r.ok) this.preview.show("delivery", this.ctrl.snapshot().editor.editedDelivery);
     return r.ok ? Result.ok(true) : r;
   }
 
@@ -102,8 +131,7 @@ export class EditorFacade {
 
     // Now focus the map on the newly geocoded point
     const snap = this.ctrl.snapshot();
-    const addr = (side === 'pickup') ? snap.editedPickup : snap.editedDelivery;
-
+    const addr = (side === 'pickup') ? snap.editor.editedPickup : snap.editor.editedDelivery;
     if (this.preview) {
       await this.preview.policy.focusAddress(side, addr);
     }
@@ -121,11 +149,11 @@ export class EditorFacade {
     }
     try {
       const snap = this.ctrl.snapshot();
-      if (snap.editedPickup && snap.editedDelivery) {
+      if (snap.editor.editedPickup && snap.editor.editedDelivery) {
         log.info("[EditorFacade] Refreshing map route.");
         await this.preview.policy.showAndFitRoute(
-            snap.editedPickup,
-            snap.editedDelivery
+            snap.editor.editedPickup,
+            snap.editor.editedDelivery
         );
         return Result.ok(true);
       } else {

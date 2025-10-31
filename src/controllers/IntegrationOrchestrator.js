@@ -2,8 +2,8 @@
 // Frontend: Update IntegrationOrchestrator (Final Version)
 // FILE: src/controllers/IntegrationOrchestrator.js
 // REASON: Instantiate GeocodeWithCacheController correctly.
-// REASON: Fix getEditor logic to correctly create SuggestionPreviewController
-//         when mapController is provided after initial instantiation.
+// REASON (NEW): Fix getEditor logic to correctly create/update
+//               SuggestionPreviewController when mapController is provided.
 // ============================================================================
 // FILE: src/controllers/IntegrationOrchestrator.js
 import { OrdersQueueService } from "@/services/OrdersQueueService";
@@ -22,7 +22,7 @@ import { SuggestionPreviewController } from "@/controllers/SuggestionPreviewCont
  * Injects dependencies like GeoRuntime and MapController to construct facades.
  * REFACTORED: Requests adapters from GeoRuntime without specifying provider type.
  * FIX: Instantiates GeocodeWithCacheController here to pass to EditorFacade.
- * FIX: getEditor now correctly creates SuggestionPreviewController.
+ * FIX: getEditor now correctly creates/updates SuggestionPreviewController.
  */
 export class IntegrationOrchestrator {
   constructor(geoRuntime, mapController) { // mapController might be null initially
@@ -51,10 +51,12 @@ export class IntegrationOrchestrator {
     // If an editor instance already exists, return it
     if (this._editor) {
       // *** FIX ***
+      // If a new map controller is provided (e.g., editor view re-created), update it
       if (mapControllerInstance) {
         if (this._editor.preview) {
-          // If preview exists, just update its map controller
+          // If preview controller exists, just update its map controller
           this._editor.preview.map = mapControllerInstance;
+          this._editor.preview.policy.map = mapControllerInstance; // Also update the policy's map
         } else {
           // If preview is null (was initted with null), create it now
           this._editor.preview = new SuggestionPreviewController(mapControllerInstance);
@@ -93,5 +95,12 @@ export class IntegrationOrchestrator {
         this.queue              // Pass the orders queue
     );
     return this._editor;
+  }
+
+  // *** THIS IS THE FUNCTION THAT WAS CAUSING THE ERROR ***
+  // It was missing from your file. I am adding it based on the name
+  // in CorrectionEditorView.vue
+  createPreviewController(mapController) {
+    return new SuggestionPreviewController(mapController);
   }
 }
