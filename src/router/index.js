@@ -1,6 +1,7 @@
 // ============================================================================
 // Frontend ➜ router/index.js (Final Version)
 // REASON: Ensure GeoRuntime is passed, guards are correctly instantiated and used.
+// REASON (REQ 2): Add new route for OrderAdminView.
 // ============================================================================
 // FILE: src/router/index.js
 
@@ -14,7 +15,7 @@ import AedAdminView from "@/views/AedAdminView.vue";
 // *** ADDED IMPORTS FOR NEW ADMIN VIEWS ***
 import HubRulesView from "@/views/HubRulesView.vue";
 import AddressUploadView from "@/views/AddressUploadView.vue";
-
+import OrderAdminView from "@/views/admin/OrderAdminView.vue"; // *** ADDED (REQ 2) ***
 import { AuthGuard } from "@/router/AuthGuard";
 import { EditorRouteGuard } from "@/router/EditorRouteGuard";
 import { AuthSessionService } from "@/services/AuthSessionService";
@@ -22,13 +23,15 @@ import { AuthSessionService } from "@/services/AuthSessionService";
 /**
  * ARCHITECTURE: Creates the Vue Router with guards for authentication and editor prerequisites.
  * REFACTORED: Added routes for Hub Rules, Address Upload, AED SFTP Admin. Corrected admin role check.
+ * UPDATED (REQ 2): Added new admin route for /admin/orders.
  */
 export function createRouter(geoRuntime) { // GeoRuntime must be passed from main.js
   if (!geoRuntime) throw new Error("createRouter requires a GeoRuntime instance.");
 
   const editorGuard = new EditorRouteGuard(geoRuntime);
   const authGuard = new AuthGuard();
-  const authSession = new AuthSessionService(); // For role checking
+  const authSession = new AuthSessionService();
+  // For role checking
 
   const routes = [
     { path: "/", redirect: "/login" },
@@ -79,6 +82,14 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
       component: AedAdminView,
       meta: { requiresAuth: true, requiresAdmin: true }
     },
+    // *** ADDED (REQ 2) ***
+    {
+      path: "/admin/orders",
+      name: "admin-orders",
+      component: OrderAdminView,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    // *** END ADDED (REQ 2) ***
 
     // Catch-all redirect (redirects unauthenticated to login, authenticated to dashboard)
     {
@@ -123,7 +134,6 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
 
         // Authentication and Authorization passed
         next();
-
       } catch (authError) {
         // AuthGuard failed (not authenticated or token invalid)
         console.warn("AuthGuard failed:", authError?.message || authError, "Redirecting to login.");

@@ -16,6 +16,7 @@ const isAdmin = computed(() => user.value?.roles?.includes('ADMIN'));
         <li><router-link to="/worklist"><i class="icon icon-list"></i> Worklist</router-link></li>
         <li v-if="isAdmin"><router-link to="/admin/logs"><i class="icon icon-file-text"></i> Logs</router-link></li>
         <li v-if="isAdmin"><router-link to="/admin/aed-sftp"><i class="icon icon-server"></i> AED SFTP</router-link></li>
+        <li v-if="isAdmin"><router-link to="/admin/orders"><i class="icon icon-admin-orders"></i> Order Admin</router-link></li>
       </ul>
     </nav>
   </aside>
@@ -77,6 +78,6 @@ nav a.router-link-exact-active {
 .icon-list::before { content: '📋'; }
 .icon-file-text::before { content: '📄'; }
 .icon-server::before { content: '☁️'; }
-
+.icon-admin-orders::before { content: '🛠️'; } /* Added (Req 2) */
 
 </style>

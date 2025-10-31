@@ -8,6 +8,8 @@
 //
 // **BUGFIX**: Correctly access `snap.orderId` and `snap.detail.barcode`
 //             instead of the incorrect `snap.editor.detail.barcode`.
+// **BUGFIX**: Get queue from `editorFacade.queue` instead of separate constructor arg.
+// **BUGFIX**: Implement partial save logic for 'pickup' and 'delivery' sides.
 // ============================================================================
 // FILE: src/controllers/SaveFlowController.js
 import { Result } from "@/domain/Result";
@@ -21,11 +23,13 @@ import { Address } from "@/domain/WorkbenchModels";
  * - `saveThenAwait` now implements the new "approval" flow.
  * - It builds the OrderCorrectionRequestDTO (including corrected addresses and applyToSimilar).
  * - It calls api.saveApproval() instead of the old /resubmit flow.
+ * - It now gets the queue service directly from the editorFacade.
+ * - `_buildCorrectionPayload` now correctly sends only pickup, only delivery, or both based on `side`.
  */
 export class SaveFlowController {
-  constructor(editorFacade, api = new AddressExceptionApi()) { // queueService removed
+  constructor(editorFacade, api = new AddressExceptionApi()) {
     if (!editorFacade) throw new Error("SaveFlowController requires an EditorFacade.");
-    if (!editorFacade.queue) throw new Error("SaveFlowController requires the EditorFacade to have a 'queue' (OrdersQueueService) property."); // Validate it's on the facade
+    if (!editorFacade.queue) throw new Error("SaveFlowController requires the EditorFacade to have a 'queue' (OrdersQueueService) property.");
     if (!api) throw new Error("SaveFlowController requires an AddressExceptionApi.");
 
     this.editor = editorFacade;
@@ -53,22 +57,23 @@ export class SaveFlowController {
 
     // 1. Build the OrderCorrectionRequestDTO
     const correctionDto = this._buildCorrectionPayload(
+        side, // *** FIX: Pass side to build correct payload ***
         snap.editedPickup, // Access corrected state from root of snap
         snap.editedDelivery, // Access corrected state from root of snap
         applyToSimilar
     );
-// 2. Call the new API endpoint
-    log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, ApplySimilar: ${applyToSimilar}`);
+
+    // 2. Call the new API endpoint
+    log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, Side: ${side}, ApplySimilar: ${applyToSimilar}`);
     const saveResult = await this.api.saveApproval(barcode, correctionDto);
 
     if (!saveResult.ok) {
       log.error("[SaveFlow] saveApproval failed:", saveResult.error);
-      return Result.fail(saveResult.error);
-// Return failure
+      return Result.fail(saveResult.error); // Return failure
     }
 
     log.info(`[SaveFlow] Save successful for Order ID ${orderId}.`);
-// 3. Advance the queue
+    // 3. Advance the queue
     const currentQueueId = this.queue.current();
     if (currentQueueId === orderId) {
       this.queue.remove(currentQueueId);
@@ -84,12 +89,13 @@ export class SaveFlowController {
 
   /**
    * Builds the OrderCorrectionRequestDTO from the editor's state.
+   * @param {string} side - 'pickup', 'delivery', or 'both'.
    * @param {Address} editedPickup - The frontend Address model for pickup.
    * @param {Address} editedDelivery - The frontend Address model for delivery.
    * @param {boolean} applyToSimilar - Flag from the UI.
    * @returns {object} The OrderCorrectionRequestDTO.
    */
-  _buildCorrectionPayload(editedPickup, editedDelivery, applyToSimilar) {
+  _buildCorrectionPayload(side, editedPickup, editedDelivery, applyToSimilar) {
 
     // Helper to convert frontend Address model to the required backend DTO format
     const mapToCorrectedAddress = (addrModel) => {
@@ -104,18 +110,28 @@ export class SaveFlowController {
           city: addrModel.city,
           // Country is removed
           latitude: addrModel.latitude,
-
           longitude: addrModel.longitude,
         }
       };
     };
 
-    return {
-      pickup: mapToCorrectedAddress(editedPickup),
-      delivery: mapToCorrectedAddress(editedDelivery),
+    // *** FIX: Respect the 'side' parameter ***
+    const payload = {
+      pickup: null,
+      delivery: null,
       resolveCoordinatesIfNeeded: true, // Always resolve coords on manual approval
       applyToSimilar: !!applyToSimilar
     };
+
+    if (side === 'pickup' || side === 'both') {
+      payload.pickup = mapToCorrectedAddress(editedPickup);
+    }
+    if (side === 'delivery' || side === 'both') {
+      payload.delivery = mapToCorrectedAddress(editedDelivery);
+    }
+    // *** END FIX ***
+
+    return payload;
   }
 }
 

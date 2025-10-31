@@ -7317,6 +7317,8 @@ export class SaveAndNextController {
 //
 // **BUGFIX**: Correctly access `snap.orderId` and `snap.detail.barcode`
 //             instead of the incorrect `snap.editor.detail.barcode`.
+// **BUGFIX**: Get queue from `editorFacade.queue` instead of separate constructor arg.
+// **BUGFIX**: Implement partial save logic for 'pickup' and 'delivery' sides.
 // ============================================================================
 // FILE: src/controllers/SaveFlowController.js
 import { Result } from "@/domain/Result";
@@ -7330,15 +7332,17 @@ import { Address } from "@/domain/WorkbenchModels";
  * - `saveThenAwait` now implements the new "approval" flow.
  * - It builds the OrderCorrectionRequestDTO (including corrected addresses and applyToSimilar).
  * - It calls api.saveApproval() instead of the old /resubmit flow.
+ * - It now gets the queue service directly from the editorFacade.
+ * - `_buildCorrectionPayload` now correctly sends only pickup, only delivery, or both based on `side`.
  */
 export class SaveFlowController {
-  constructor(editorFacade, queueService, api = new AddressExceptionApi()) {
+  constructor(editorFacade, api = new AddressExceptionApi()) {
     if (!editorFacade) throw new Error("SaveFlowController requires an EditorFacade.");
-    if (!queueService) throw new Error("SaveFlowController requires a QueueService.");
+    if (!editorFacade.queue) throw new Error("SaveFlowController requires the EditorFacade to have a 'queue' (OrdersQueueService) property.");
     if (!api) throw new Error("SaveFlowController requires an AddressExceptionApi.");
 
     this.editor = editorFacade;
-    this.queue = queueService;
+    this.queue = editorFacade.queue; // Get the correct queue from the facade
     this.api = api;
   }
 
@@ -7362,18 +7366,18 @@ export class SaveFlowController {
 
     // 1. Build the OrderCorrectionRequestDTO
     const correctionDto = this._buildCorrectionPayload(
+        side, // *** FIX: Pass side to build correct payload ***
         snap.editedPickup, // Access corrected state from root of snap
         snap.editedDelivery, // Access corrected state from root of snap
         applyToSimilar
     );
 // 2. Call the new API endpoint
-    log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, ApplySimilar: ${applyToSimilar}`);
+    log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, Side: ${side}, ApplySimilar: ${applyToSimilar}`);
     const saveResult = await this.api.saveApproval(barcode, correctionDto);
 
     if (!saveResult.ok) {
       log.error("[SaveFlow] saveApproval failed:", saveResult.error);
-      return Result.fail(saveResult.error);
-// Return failure
+      return Result.fail(saveResult.error); // Return failure
     }
 
     log.info(`[SaveFlow] Save successful for Order ID ${orderId}.`);
@@ -7393,12 +7397,13 @@ export class SaveFlowController {
 
   /**
    * Builds the OrderCorrectionRequestDTO from the editor's state.
+   * @param {string} side - 'pickup', 'delivery', or 'both'.
    * @param {Address} editedPickup - The frontend Address model for pickup.
    * @param {Address} editedDelivery - The frontend Address model for delivery.
    * @param {boolean} applyToSimilar - Flag from the UI.
    * @returns {object} The OrderCorrectionRequestDTO.
    */
-  _buildCorrectionPayload(editedPickup, editedDelivery, applyToSimilar) {
+  _buildCorrectionPayload(side, editedPickup, editedDelivery, applyToSimilar) {
 
     // Helper to convert frontend Address model to the required backend DTO format
     const mapToCorrectedAddress = (addrModel) => {
@@ -7413,18 +7418,28 @@ export class SaveFlowController {
           city: addrModel.city,
           // Country is removed
           latitude: addrModel.latitude,
-
           longitude: addrModel.longitude,
         }
       };
     };
 
-    return {
-      pickup: mapToCorrectedAddress(editedPickup),
-      delivery: mapToCorrectedAddress(editedDelivery),
+    // *** FIX: Respect the 'side' parameter ***
+    const payload = {
+      pickup: null,
+      delivery: null,
       resolveCoordinatesIfNeeded: true, // Always resolve coords on manual approval
       applyToSimilar: !!applyToSimilar
     };
+
+    if (side === 'pickup' || side === 'both') {
+      payload.pickup = mapToCorrectedAddress(editedPickup);
+    }
+    if (side === 'delivery' || side === 'both') {
+      payload.delivery = mapToCorrectedAddress(editedDelivery);
+    }
+    // *** END FIX ***
+
+    return payload;
   }
 }
 
@@ -7434,6 +7449,7 @@ const log = {
   warn: (...args) => console.warn(...args),
   error: (...args) => console.error(...args),
 };
+
 
 ================================================================================
 ### PLIK: controllers/SuggestionListController.js
@@ -8524,7 +8540,6 @@ const handleChangePassword = () => {
       <strong class="font-bold">Failed to load order details:</strong>
       <span class="block sm:inline">{{ state.error }}</span>
       <span v-if="orderId"> (ID: {{
-
           orderId }})</span>
     </div>
 
@@ -8535,8 +8550,6 @@ const handleChangePassword = () => {
             Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
           </h2>
           <p class="text-sm text-gray-500">
-
-
             Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
             Status: <StatusBadge :status="state.detail.processingStatus" />
           </p>
@@ -8549,8 +8562,6 @@ const handleChangePassword = () => {
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Pickup Address</h3>
           <div class="p-4 space-y-4">
-
-
             <AddressDisplay
                 title="Original Pickup"
                 :address="state.detail.originalPickup"
@@ -8558,16 +8569,12 @@ const handleChangePassword = () => {
                 :reasonCode="state.detail.pickupReasonCode"
             />
             <AddressDisplay
-
-
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.pickupStoredAddress"
                 v-if="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Pickup Suggestions"
-
-
                 :suggestions="state.detail.suggestedPickup"
                 @accept="handleAcceptSuggestion('pickup', $event)"
             />
@@ -8575,8 +8582,6 @@ const handleChangePassword = () => {
                 side="pickup"
                 :initialAddress="state.editedPickup"
                 :placesAdapter="placesAdapter"
-
-
                 @update="handleFormUpdate"
             />
           </div>
@@ -8584,7 +8589,6 @@ const handleChangePassword = () => {
             <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('pickup')"
-
                       :disabled="state.geocodeLoading" class="button-secondary">
                 {{ state.geocodeLoading ?
                   'Geocoding...' : 'Geocode Edited' }}
@@ -8600,8 +8604,6 @@ const handleChangePassword = () => {
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Delivery Address</h3>
           <div class="p-4 space-y-4">
-
-
             <AddressDisplay
                 title="Original Delivery"
                 :address="state.detail.originalDelivery"
@@ -8609,16 +8611,12 @@ const handleChangePassword = () => {
                 :reasonCode="state.detail.deliveryReasonCode"
             />
             <AddressDisplay
-
-
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.deliveryStoredAddress"
                 v-if="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Delivery Suggestions"
-
-
                 :suggestions="state.detail.suggestedDelivery"
                 @accept="handleAcceptSuggestion('delivery', $event)"
             />
@@ -8626,8 +8624,6 @@ const handleChangePassword = () => {
                 side="delivery"
                 :initialAddress="state.editedDelivery"
                 :placesAdapter="placesAdapter"
-
-
                 @update="handleFormUpdate"
             />
           </div>
@@ -8635,8 +8631,6 @@ const handleChangePassword = () => {
             <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
-
-
                 {{ state.geocodeLoading ?
                   'Geocoding...' : 'Geocode Edited' }}
               </button>
@@ -8652,8 +8646,6 @@ const handleChangePassword = () => {
       <div class="editor-map bg-white shadow-md rounded-lg p-4">
         <h3 class="text-lg font-semibold text-gray-800 mb-2">Map Preview</h3>
         <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
-
-
         <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
           <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
           <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
@@ -8665,8 +8657,6 @@ const handleChangePassword = () => {
           <label for="applyToSimilar" class="flex items-center cursor-pointer">
             <input
                 id="applyToSimilar"
-
-
                 type="checkbox"
                 v-model="applyToSimilar"
                 class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -8674,7 +8664,6 @@ const handleChangePassword = () => {
             <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
           </label>
         </div>
-
 
         <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
           {{ state.saveLoading ?
@@ -8696,6 +8685,7 @@ const handleChangePassword = () => {
 <script setup>
 // *** MAP FIX: REMOVED Leaflet CSS import (now in main.js) ***
 // import 'leaflet/dist/leaflet.css';
+
 import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
@@ -8771,9 +8761,9 @@ onMounted(async () => {
   }
 
   // 2. Initialize Save Controllers
-// *** FIX: Instantiate SaveFlowController correctly ***
-  // It now uses the corrected AddressExceptionApi logic internally
-  saveFlow = new SaveFlowController(editorFacade, worklistStore);
+  // *** FIX: Instantiate SaveFlowController correctly ***
+  // It no longer takes the worklistStore; it gets the queue from the facade.
+  saveFlow = new SaveFlowController(editorFacade);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
   // *** END FIX ***
 
@@ -8801,8 +8791,7 @@ watch(mapContainer, async (newMapEl) => {
       log.info("MapController initialized and injected into facade.");
 
 
-      if (state.editedPickup && state.editedDelivery)
-      {
+      if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
             state.editedDelivery
@@ -8843,7 +8832,7 @@ async function loadOrderData() {
     const snap = editorFacade.snapshot();
 // *** BUGFIX: Access root snapshot ***
     state.detail = snap.detail;
-// *** FIX: Create new Address objects to trigger reactivity ***
+    // *** FIX: Create new Address objects to trigger reactivity ***
     state.editedPickup = Address.from(snap.editedPickup);
     state.editedDelivery = Address.from(snap.editedDelivery);
   } else {
@@ -9091,8 +9080,7 @@ const log = {
 
 /* *** MAP FIX: Ensure map container has a height *** */
 .map-container-element {
-  min-height: 300px;
-  /* Or h-64 md:h-80 as per the classes */
+  min-height: 300px; /* Or h-64 md:h-80 as per the classes */
   height: 300px;
 }
 </style>
