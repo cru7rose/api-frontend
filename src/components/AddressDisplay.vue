@@ -28,7 +28,7 @@ const formattedAddress = computed(() => {
   if (!props.address) return "N/A";
   try {
     // Create a copy for display, remove fields we show separately
-    const displayObj = { ...props.address };
+    const displayObj = {...props.address};
     delete displayObj.alias;
     delete displayObj.name;
     delete displayObj.latitude;

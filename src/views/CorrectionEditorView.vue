@@ -142,9 +142,8 @@
 </template>
 
 <script setup>
-// *** MAP FIX: Import Leaflet CSS ***
-import 'leaflet/dist/leaflet.css';
-// *** END FIX ***
+// *** MAP FIX: REMOVED Leaflet CSS import (now in main.js) ***
+// import 'leaflet/dist/leaflet.css';
 
 import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -438,13 +437,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
+        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({name: 'worklist'});
+        router.push({ name: 'worklist' });
       }
     } else {
       throw result.error;
@@ -487,32 +486,26 @@ const log = {
   transition: all 0.2s ease;
   cursor: pointer;
 }
-
 .button-primary {
   background-color: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
 }
-
 .button-primary:hover:not(:disabled) {
   background-color: #004a9c; /* Darker blue */
 }
-
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
   border-color: #d1d5db; /* gray-300 */
 }
-
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb; /* gray-200 */
 }
-
 .button-primary:disabled, .button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
 .button-lg {
   padding: 0.625rem 1.25rem;
   font-size: 1rem; /* 16px */
@@ -530,5 +523,11 @@ const log = {
 
 .editor-footer .bulk-toggle {
   /* Styles are applied via flex utility classes */
+}
+
+/* *** MAP FIX: Ensure map container has a height *** */
+.map-container-element {
+  min-height: 300px; /* Or h-64 md:h-80 as per the classes */
+  height: 300px;
 }
 </style>
