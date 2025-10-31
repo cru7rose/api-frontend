@@ -4,6 +4,7 @@
 // REASON: Fix Nominatim default URL to include /search.php.
 // REASON: Provide geoRuntime to the Vue app instance.
 // REASON (BUGFIX): Import leaflet.css globally to fix map rendering.
+// REASON (AUTH FIX): Remove the conflicting AuthController.
 // ============================================================================
 // FILE: src/main.js
 import { createApp } from "vue";
@@ -11,7 +12,7 @@ import { createPinia } from "pinia";
 import App from "@/App.vue";
 import { createRouter } from "@/router/index";
 import { AppBootstrapController } from "@/controllers/AppBootstrapController";
-import { AuthController } from "@/controllers/AuthController";
+// import { AuthController } from "@/controllers/AuthController"; // *** REMOVED (AUTH FIX) ***
 import { GeoRuntime } from "@/adapters/GeoRuntime";
 import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
 import '@/assets/theme.css';
@@ -22,8 +23,11 @@ import 'leaflet/dist/leaflet.css';
 
 (async () => {
     const pinia = createPinia();
-    const auth = new AuthController();
-    auth.hydrateFromStorage();
+
+    // *** REMOVED (AUTH FIX) ***
+    // const auth = new AuthController();
+    // auth.hydrateFromStorage();
+    // *** END REMOVED ***
 
     const bootstrap = new AppBootstrapController();
     const boot = await bootstrap.bootstrap();
@@ -34,23 +38,16 @@ import 'leaflet/dist/leaflet.css';
     const geoProviderConfig = {
         map: (config?.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
         geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
-
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
-
-        // *** THIS IS THE FIX FOR 406 Not Acceptable ***
-        // Your server requires search.php
         nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search.php',
-
-        // Use the proxy path, not a direct IP
         routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey =
-
         config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
 
     const geoRuntime = new GeoRuntime(geoProviderConfig);
-// 4. Initialize GeoRuntime
+    // 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
         console.log("[main.js] Geo Runtime initialization attempted.");
@@ -58,7 +55,7 @@ import 'leaflet/dist/leaflet.css';
         console.error("[main.js] Global Geo Runtime initialization failed:", err?.message || err);
     }
 
-    const router = createRouter(geoRuntime);
+    const router = createRouter(geoRuntime); // geoRuntime is passed to router
     const app = createApp(App);
     app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
     window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
@@ -69,7 +66,7 @@ import 'leaflet/dist/leaflet.css';
 
     const orchestrator = new IntegrationOrchestrator(geoRuntime, null);
     app.provide("orchestrator", orchestrator);
-    app.provide("auth", auth);
+    // app.provide("auth", auth); // *** REMOVED (AUTH FIX) ***
     app.provide("config", config);
     app.provide("health", health);
     app.provide("geoRuntime", geoRuntime); // <-- Provide geoRuntime
