@@ -1,6 +1,7 @@
 <template>
   <div class="address-form p-4 border-t border-gray-100">
     <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
+
     <div class="form-group mb-3">
 
       <label :for="`${side}-alias`" class="block text-xs font-medium text-gray-600 mb-1">Alias</label>
@@ -13,6 +14,7 @@
           readonly
           disabled
       />
+
     </div>
 
     <div class="form-grid grid grid-cols-2 gap-x-4 gap-y-3">
@@ -24,6 +26,7 @@
             type="text"
             :value="addressModelValue?.street"
             @input="handleInput('street', $event.target.value)"
+
             @focus="handleFocus('street')"
             @blur="hideSuggestions"
 
@@ -33,7 +36,8 @@
         <ul v-if="showSuggestions && activeField === 'street'" class="suggestions-dropdown" ref="streetSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length
+=== 0" class="suggestion-item-info">No suggestions found.</li>
           <li
               v-for="(suggestion, index) in
 suggestions"
@@ -41,6 +45,7 @@ suggestions"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
+
               class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
@@ -53,6 +58,7 @@ suggestions"
         <label :for="`${side}-houseNumber`" class="block text-xs font-medium text-gray-600 mb-1">House No.</label>
         <input
             :id="`${side}-houseNumber`"
+
             type="text"
             :value="addressModelValue?.houseNumber"
             @input="emitUpdate('houseNumber', $event.target.value)"
@@ -64,6 +70,7 @@ suggestions"
       <div class="form-group suggestion-group col-span-1">
         <label :for="`${side}-postalCode`" class="block text-xs font-medium text-gray-600 mb-1">Postal Code</label>
         <input
+
             :id="`${side}-postalCode`"
             type="text"
             :value="addressModelValue?.postalCode"
@@ -73,6 +80,7 @@ suggestions"
 
             @keydown="handleKeydown"
             autocomplete="off"
+
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'postalCode'" class="suggestions-dropdown" ref="postalSuggestionsRef">
@@ -82,6 +90,7 @@ suggestions"
           <li
 
               v-for="(suggestion, index) in suggestions"
+
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
@@ -89,6 +98,7 @@ suggestions"
               class="suggestion-item"
           >
             {{
+
               formatSuggestion(suggestion) }}
           </li>
         </ul>
@@ -100,6 +110,7 @@ suggestions"
             :id="`${side}-city`"
             type="text"
             :value="addressModelValue?.city"
+
             @input="handleInput('city', $event.target.value)"
 
             @focus="handleFocus('city')"
@@ -109,6 +120,7 @@ suggestions"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'city'" class="suggestions-dropdown" ref="citySuggestionsRef">
+
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
 
@@ -117,6 +129,7 @@ suggestions"
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
+
               @mousedown.prevent="selectSuggestion(suggestion)"
 
               @mouseenter="activeSuggestionIndex = index"
@@ -128,6 +141,7 @@ suggestions"
       </div>
 
       <div class="form-group col-span-2">
+
         <label :for="`${side}-country`" class="block text-xs font-medium text-gray-600 mb-1">Country</label>
         <input
             :id="`${side}-country`"
@@ -137,6 +151,7 @@ suggestions"
             @input="emitUpdate('country', $event.target.value)"
             maxlength="2"
             class="form-input"
+
         />
       </div>
 
@@ -160,6 +175,7 @@ parseFloat($event.target.value) : null)"
             :id="`${side}-longitude`"
             type="number"
             step="any"
+
             :value="addressModelValue?.longitude"
 
             @input="emitUpdate('longitude', $event.target.value ? parseFloat($event.target.value) : null)"
@@ -172,7 +188,7 @@ parseFloat($event.target.value) : null)"
 
 <script setup>
 import { ref, computed, reactive, watch, onUnmounted, nextTick } from 'vue';
-// import { AddressExceptionApi } from '@/services/AddressExceptionApi'; // REMOVED
+import { AddressExceptionApi } from '@/services/AddressExceptionApi';
 import { DebounceTimer } from '@/services/DebounceTimer';
 
 const props = defineProps({
@@ -181,6 +197,7 @@ const props = defineProps({
     required: true,
   },
   initialAddress: {
+
     type: Object,
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
@@ -190,7 +207,6 @@ const props = defineProps({
     default: null,
   },
 });
-
 const emit = defineEmits(['update']);
 // --- State ---
 const suggestions = ref([]);
@@ -199,12 +215,14 @@ const suggestionsLoading = ref(false);
 const suggestionsError = ref(null);
 const activeField = ref(null);
 const activeSuggestionIndex = ref(-1);
-const activeSuggestionSource = ref('none'); // 'google' or 'backend'
+const activeSuggestionSource = ref('none');
+// 'google' or 'backend'
 
 // *** BUGFIX: Remove broken API dependency ***
 // const api = new AddressExceptionApi();
 const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-// const backendDebouncer = new DebounceTimer(300); // REMOVED
+// const backendDebouncer = new DebounceTimer(300);
+// REMOVED
 
 const addressModelValue = computed(() => props.initialAddress);
 const sideLabel = computed(() => "Edit " + props.side.charAt(0).toUpperCase() + props.side.slice(1));
@@ -245,7 +263,6 @@ const fetchGoogleSuggestions = async (field, value) => {
     suggestionsLoading.value = false;
   }
 };
-
 // *** BUGFIX: Remove broken backend suggestion logic ***
 // const fetchBackendSuggestions = ... (REMOVED)
 
@@ -256,36 +273,36 @@ const emitUpdate = (field, value) => {
 };
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-  // Trigger Google Places (debounced) as primary suggestion source on type
+// Trigger Google Places (debounced) as primary suggestion source on type
   if (field === 'street' || field === 'city' || field === 'postalCode') {
     placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
   } else {
     // Clear suggestions for other fields
     hideSuggestions();
     placesDebouncer.cancel();
-    // backendDebouncer.cancel(); // REMOVED
+    // backendDebouncer.cancel();
+// REMOVED
   }
 };
 const handleFocus = (field) => {
   // Hide any other open dropdowns
   hideSuggestions();
-  // Set active field for keyboard nav and context
+// Set active field for keyboard nav and context
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   activeSuggestionSource.value = 'none';
-  // Reset source
+// Reset source
 
   // *** BUGFIX: Removed broken backend logic ***
   // if (field === 'street' || field === 'postalCode' || field === 'city') {
   //   if (suggestions.value.length === 0) {
   //     backendDebouncer.run(() => fetchBackendSuggestions(field));
-  //   }
+//   }
   // }
 };
 
 const selectSuggestion = (suggestion) => {
   if (!suggestion) return;
-
   const source = activeSuggestionSource.value;
   if (source === 'google') {
     // Google suggestion selected (full object)
@@ -362,13 +379,16 @@ onUnmounted(() => {
 .form-input {
   display: block;
   width: 100%;
-  padding: 0.5rem 0.75rem; /* 8px 12px */
+  padding: 0.5rem 0.75rem;
+  /* 8px 12px */
   font-size: 0.875rem; /* 14px */
   line-height: 1.25rem; /* 20px */
-  color: #1f2937; /* gray-800 */
+  color: #1f2937;
+  /* gray-800 */
   background-color: #ffffff;
   border: 1px solid #d1d5db; /* gray-300 */
-  border-radius: 0.375rem; /* 6px */
+  border-radius: 0.375rem;
+  /* 6px */
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -413,7 +433,8 @@ onUnmounted(() => {
 .suggestion-item {
   padding: 0.5rem 0.875rem; /* 8px 14px */
   cursor: pointer;
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.875rem;
+  /* 14px */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -429,10 +450,12 @@ onUnmounted(() => {
   font-style: italic;
   color: #6b7280; /* gray-500 */
   cursor: default;
-  background-color: #f9fafb; /* gray-50 */
+  background-color: #f9fafb;
+  /* gray-50 */
   padding: 0.5rem 0.875rem;
 }
 .suggestion-item-error {
-  color: #dc3545; /* var(--color-danger) */
+  color: #dc3545;
+  /* var(--color-danger) */
 }
 </style>

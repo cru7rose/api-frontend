@@ -8,8 +8,10 @@
 
     <div v-if="address" class="p-3 bg-gray-50 rounded border border-gray-200">
       <pre class="text-xs font-mono text-gray-800">{{ formattedAddress }}</pre>
-      <div v-if="address.latitude || address.longitude" class="mt-2 pt-2 border-t border-gray-200">
-        <span class="text-xs font-mono text-blue-600">Lat: {{ address.latitude || 'N/A' }}, Lon: {{ address.longitude || 'N/A' }}</span>
+      <div
+          v-if="address.latitude || address.longitude" class="mt-2 pt-2 border-t border-gray-200">
+        <span class="text-xs font-mono text-blue-600">Lat: {{ address.latitude ||
+        'N/A' }}, Lon: {{ address.longitude || 'N/A' }}</span>
       </div>
     </div>
     <p v-else class="na-text text-sm text-gray-500 italic p-3 bg-gray-50 rounded border border-gray-200">N/A</p>
@@ -28,7 +30,7 @@ const formattedAddress = computed(() => {
   if (!props.address) return "N/A";
   try {
     // Create a copy for display, remove fields we show separately
-    const displayObj = {...props.address};
+    const displayObj = { ...props.address };
     delete displayObj.alias;
     delete displayObj.name;
     delete displayObj.latitude;
@@ -38,6 +40,7 @@ const formattedAddress = computed(() => {
     Object.keys(displayObj).forEach(key => {
       if (displayObj[key] === null || displayObj[key] === "") {
         delete displayObj[key];
+
       }
     });
 

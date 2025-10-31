@@ -6,13 +6,18 @@
           class="p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition flex justify-between items-center group"
           @click="emitAccept(index)">
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-gray-800 truncate" :title="suggestion.fullAddressLabel || formatSuggestion(suggestion)">
-            {{ suggestion.fullAddressLabel || formatSuggestion(suggestion) }}
+          <p class="text-xs font-medium
+text-gray-800 truncate" :title="suggestion.fullAddressLabel || formatSuggestion(suggestion)">
+            {{ suggestion.fullAddressLabel ||
+          formatSuggestion(suggestion) }}
           </p>
           <p class="text-xs text-gray-500">
-            Score: <span class="font-medium">{{ suggestion.matchScore?.toFixed(2) || 'N/A' }}</span>,
-            Level: <span class="font-medium">{{ suggestion.matchLevel || 'N/A' }}</span>,
-            Source: <span class="font-medium">{{ suggestion.providerSource || 'N/A' }}</span>
+            Score: <span class="font-medium">{{ suggestion.matchScore?.toFixed(2) ||
+          'N/A' }}</span>,
+            Level: <span class="font-medium">{{ suggestion.matchLevel ||
+          'N/A' }}</span>,
+            Source: <span class="font-medium">{{ suggestion.providerSource ||
+          'N/A' }}</span>
           </p>
         </div>
         <button class="ml-2 text-xs font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -51,14 +56,17 @@ const formatSuggestion = (s) => {
 .max-h-48::-webkit-scrollbar {
   width: 6px;
 }
+
 .max-h-48::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 3px;
 }
+
 .max-h-48::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 3px;
 }
+
 .max-h-48::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
 }

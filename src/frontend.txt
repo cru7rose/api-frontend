@@ -192,6 +192,7 @@ provide('currentUser', readonly(user));
 // REASON: Default OSRM routing URL to the proxy path '/osrm'.
 // REASON: Fix Nominatim default URL to include /search.php.
 // REASON: Provide geoRuntime to the Vue app instance.
+// REASON (BUGFIX): Import leaflet.css globally to fix map rendering.
 // ============================================================================
 // FILE: src/main.js
 import { createApp } from "vue";
@@ -203,6 +204,10 @@ import { AuthController } from "@/controllers/AuthController";
 import { GeoRuntime } from "@/adapters/GeoRuntime";
 import { IntegrationOrchestrator } from "@/controllers/IntegrationOrchestrator";
 import '@/assets/theme.css';
+
+// *** MAP FIX: Import Leaflet CSS globally ***
+import 'leaflet/dist/leaflet.css';
+// *** END MAP FIX ***
 
 (async () => {
     const pinia = createPinia();
@@ -401,7 +406,8 @@ export class StatusBadgeViewModel {
       HAPPY_PATH_MATCHED: { label: "Auto-Matched", tone: "success", icon: "check-circle" },
       PENDING_VERIFICATION: { label: "Needs Review", tone: "warning", icon: "alert-triangle" },
       APPROVED: { label: "Approved", tone: "info", icon: "check" },
-      SENT_TO_TRACKIT: { label: "Sent to TrackIT", tone: "info", icon: "send" },
+      SENT_TO_TRACKIT: { label: "Sent to TrackIT", tone: "info",
+        icon: "send" },
       ACK_TRACKIT: { label: "In TrackIT", tone: "success", icon: "check-circle" },
       CDC_EVENT: { label: "CDC Event", tone: "neutral", icon: "database" },
       FAILED: { label: "Failed", tone: "danger", icon: "x-circle" },
@@ -409,6 +415,7 @@ export class StatusBadgeViewModel {
       // --- Legacy/Compatibility States (Mapped to canonical visuals where possible) ---
       ADDRESS_NEEDS_REVIEW: { label: "Needs Review", tone: "warning", icon: "alert-triangle" },
       ADDRESS_VALIDATED: { label: "Validated", tone: "success", icon: "check-circle" }, // Maps roughly to ACK_TRACKIT or HAPPY_PATH_MATCHED
+
       MANUALLY_CORRECTED: { label: "Corrected", tone: "info", icon: "edit-3" }, // Maps roughly to APPROVED
       PENDING_ADDRESS_VALIDATION: { label: "Pending", tone: "info", icon: "clock" }, // Maps roughly to SENT_TO_TRACKIT or AWAITING_ALIAS_CHECK
     };
@@ -474,11 +481,6 @@ export class VerificationProgressViewModel {
 ### PLIK: composables/useToast.js
 ================================================================================
 
-// ============================================================================
-// Frontend: Add useToast.js
-// FILE: src/composables/useToast.js (NEW FILE - JS Version)
-// REASON: Provides toast notifications. Converted to JS for project consistency.
-// ============================================================================
 import { useToast as useVueToast } from 'vue-toastification'
 
 /**
@@ -496,7 +498,8 @@ export function useToast() {
         pauseOnHover: true,
         draggable: true,
         draggablePercent: 0.6,
-        showCloseButtonOnHover: false,
+        showCloseButtonOnHover:
+            false,
         hideProgressBar: false,
         closeButton: 'button',
         icon: true,
@@ -511,7 +514,8 @@ export function useToast() {
         toast.error(message, toastOptions(timeout))
     }
 
-    const info = (message, timeout = 3000) => {
+    const info = (message, timeout =
+    3000) => {
         toast.info(message, toastOptions(timeout))
     }
 
@@ -2331,8 +2335,10 @@ const props = defineProps({
 
     <div v-if="address" class="p-3 bg-gray-50 rounded border border-gray-200">
       <pre class="text-xs font-mono text-gray-800">{{ formattedAddress }}</pre>
-      <div v-if="address.latitude || address.longitude" class="mt-2 pt-2 border-t border-gray-200">
-        <span class="text-xs font-mono text-blue-600">Lat: {{ address.latitude || 'N/A' }}, Lon: {{ address.longitude || 'N/A' }}</span>
+      <div
+          v-if="address.latitude || address.longitude" class="mt-2 pt-2 border-t border-gray-200">
+        <span class="text-xs font-mono text-blue-600">Lat: {{ address.latitude ||
+        'N/A' }}, Lon: {{ address.longitude || 'N/A' }}</span>
       </div>
     </div>
     <p v-else class="na-text text-sm text-gray-500 italic p-3 bg-gray-50 rounded border border-gray-200">N/A</p>
@@ -2361,6 +2367,7 @@ const formattedAddress = computed(() => {
     Object.keys(displayObj).forEach(key => {
       if (displayObj[key] === null || displayObj[key] === "") {
         delete displayObj[key];
+
       }
     });
 
@@ -2528,6 +2535,7 @@ function handleSave() {
 <template>
   <div class="address-form p-4 border-t border-gray-100">
     <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
+
     <div class="form-group mb-3">
 
       <label :for="`${side}-alias`" class="block text-xs font-medium text-gray-600 mb-1">Alias</label>
@@ -2540,6 +2548,7 @@ function handleSave() {
           readonly
           disabled
       />
+
     </div>
 
     <div class="form-grid grid grid-cols-2 gap-x-4 gap-y-3">
@@ -2551,6 +2560,7 @@ function handleSave() {
             type="text"
             :value="addressModelValue?.street"
             @input="handleInput('street', $event.target.value)"
+
             @focus="handleFocus('street')"
             @blur="hideSuggestions"
 
@@ -2560,7 +2570,8 @@ function handleSave() {
         <ul v-if="showSuggestions && activeField === 'street'" class="suggestions-dropdown" ref="streetSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length
+=== 0" class="suggestion-item-info">No suggestions found.</li>
           <li
               v-for="(suggestion, index) in
 suggestions"
@@ -2568,6 +2579,7 @@ suggestions"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
+
               class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
@@ -2580,6 +2592,7 @@ suggestions"
         <label :for="`${side}-houseNumber`" class="block text-xs font-medium text-gray-600 mb-1">House No.</label>
         <input
             :id="`${side}-houseNumber`"
+
             type="text"
             :value="addressModelValue?.houseNumber"
             @input="emitUpdate('houseNumber', $event.target.value)"
@@ -2591,6 +2604,7 @@ suggestions"
       <div class="form-group suggestion-group col-span-1">
         <label :for="`${side}-postalCode`" class="block text-xs font-medium text-gray-600 mb-1">Postal Code</label>
         <input
+
             :id="`${side}-postalCode`"
             type="text"
             :value="addressModelValue?.postalCode"
@@ -2600,6 +2614,7 @@ suggestions"
 
             @keydown="handleKeydown"
             autocomplete="off"
+
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'postalCode'" class="suggestions-dropdown" ref="postalSuggestionsRef">
@@ -2609,6 +2624,7 @@ suggestions"
           <li
 
               v-for="(suggestion, index) in suggestions"
+
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
@@ -2616,6 +2632,7 @@ suggestions"
               class="suggestion-item"
           >
             {{
+
               formatSuggestion(suggestion) }}
           </li>
         </ul>
@@ -2627,6 +2644,7 @@ suggestions"
             :id="`${side}-city`"
             type="text"
             :value="addressModelValue?.city"
+
             @input="handleInput('city', $event.target.value)"
 
             @focus="handleFocus('city')"
@@ -2636,6 +2654,7 @@ suggestions"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'city'" class="suggestions-dropdown" ref="citySuggestionsRef">
+
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
 
@@ -2644,6 +2663,7 @@ suggestions"
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
+
               @mousedown.prevent="selectSuggestion(suggestion)"
 
               @mouseenter="activeSuggestionIndex = index"
@@ -2655,6 +2675,7 @@ suggestions"
       </div>
 
       <div class="form-group col-span-2">
+
         <label :for="`${side}-country`" class="block text-xs font-medium text-gray-600 mb-1">Country</label>
         <input
             :id="`${side}-country`"
@@ -2664,6 +2685,7 @@ suggestions"
             @input="emitUpdate('country', $event.target.value)"
             maxlength="2"
             class="form-input"
+
         />
       </div>
 
@@ -2687,6 +2709,7 @@ parseFloat($event.target.value) : null)"
             :id="`${side}-longitude`"
             type="number"
             step="any"
+
             :value="addressModelValue?.longitude"
 
             @input="emitUpdate('longitude', $event.target.value ? parseFloat($event.target.value) : null)"
@@ -2708,6 +2731,7 @@ const props = defineProps({
     required: true,
   },
   initialAddress: {
+
     type: Object,
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
@@ -2717,7 +2741,6 @@ const props = defineProps({
     default: null,
   },
 });
-
 const emit = defineEmits(['update']);
 // --- State ---
 const suggestions = ref([]);
@@ -2726,12 +2749,14 @@ const suggestionsLoading = ref(false);
 const suggestionsError = ref(null);
 const activeField = ref(null);
 const activeSuggestionIndex = ref(-1);
-const activeSuggestionSource = ref('none'); // 'google' or 'backend'
+const activeSuggestionSource = ref('none');
+// 'google' or 'backend'
 
 // *** BUGFIX: Remove broken API dependency ***
 // const api = new AddressExceptionApi();
 const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-// const backendDebouncer = new DebounceTimer(300); // REMOVED
+// const backendDebouncer = new DebounceTimer(300);
+// REMOVED
 
 const addressModelValue = computed(() => props.initialAddress);
 const sideLabel = computed(() => "Edit " + props.side.charAt(0).toUpperCase() + props.side.slice(1));
@@ -2772,7 +2797,6 @@ const fetchGoogleSuggestions = async (field, value) => {
     suggestionsLoading.value = false;
   }
 };
-
 // *** BUGFIX: Remove broken backend suggestion logic ***
 // const fetchBackendSuggestions = ... (REMOVED)
 
@@ -2783,36 +2807,36 @@ const emitUpdate = (field, value) => {
 };
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-  // Trigger Google Places (debounced) as primary suggestion source on type
+// Trigger Google Places (debounced) as primary suggestion source on type
   if (field === 'street' || field === 'city' || field === 'postalCode') {
     placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
   } else {
     // Clear suggestions for other fields
     hideSuggestions();
     placesDebouncer.cancel();
-    // backendDebouncer.cancel(); // REMOVED
+    // backendDebouncer.cancel();
+// REMOVED
   }
 };
 const handleFocus = (field) => {
   // Hide any other open dropdowns
   hideSuggestions();
-  // Set active field for keyboard nav and context
+// Set active field for keyboard nav and context
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   activeSuggestionSource.value = 'none';
-  // Reset source
+// Reset source
 
   // *** BUGFIX: Removed broken backend logic ***
   // if (field === 'street' || field === 'postalCode' || field === 'city') {
   //   if (suggestions.value.length === 0) {
   //     backendDebouncer.run(() => fetchBackendSuggestions(field));
-  //   }
+//   }
   // }
 };
 
 const selectSuggestion = (suggestion) => {
   if (!suggestion) return;
-
   const source = activeSuggestionSource.value;
   if (source === 'google') {
     // Google suggestion selected (full object)
@@ -2889,13 +2913,16 @@ onUnmounted(() => {
 .form-input {
   display: block;
   width: 100%;
-  padding: 0.5rem 0.75rem; /* 8px 12px */
+  padding: 0.5rem 0.75rem;
+  /* 8px 12px */
   font-size: 0.875rem; /* 14px */
   line-height: 1.25rem; /* 20px */
-  color: #1f2937; /* gray-800 */
+  color: #1f2937;
+  /* gray-800 */
   background-color: #ffffff;
   border: 1px solid #d1d5db; /* gray-300 */
-  border-radius: 0.375rem; /* 6px */
+  border-radius: 0.375rem;
+  /* 6px */
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -2940,7 +2967,8 @@ onUnmounted(() => {
 .suggestion-item {
   padding: 0.5rem 0.875rem; /* 8px 14px */
   cursor: pointer;
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.875rem;
+  /* 14px */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2956,11 +2984,13 @@ onUnmounted(() => {
   font-style: italic;
   color: #6b7280; /* gray-500 */
   cursor: default;
-  background-color: #f9fafb; /* gray-50 */
+  background-color: #f9fafb;
+  /* gray-50 */
   padding: 0.5rem 0.875rem;
 }
 .suggestion-item-error {
-  color: #dc3545; /* var(--color-danger) */
+  color: #dc3545;
+  /* var(--color-danger) */
 }
 </style>
 
@@ -3824,13 +3854,18 @@ const downloadFile = async () => {
           class="p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition flex justify-between items-center group"
           @click="emitAccept(index)">
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-gray-800 truncate" :title="suggestion.fullAddressLabel || formatSuggestion(suggestion)">
-            {{ suggestion.fullAddressLabel || formatSuggestion(suggestion) }}
+          <p class="text-xs font-medium
+text-gray-800 truncate" :title="suggestion.fullAddressLabel || formatSuggestion(suggestion)">
+            {{ suggestion.fullAddressLabel ||
+          formatSuggestion(suggestion) }}
           </p>
           <p class="text-xs text-gray-500">
-            Score: <span class="font-medium">{{ suggestion.matchScore?.toFixed(2) || 'N/A' }}</span>,
-            Level: <span class="font-medium">{{ suggestion.matchLevel || 'N/A' }}</span>,
-            Source: <span class="font-medium">{{ suggestion.providerSource || 'N/A' }}</span>
+            Score: <span class="font-medium">{{ suggestion.matchScore?.toFixed(2) ||
+          'N/A' }}</span>,
+            Level: <span class="font-medium">{{ suggestion.matchLevel ||
+          'N/A' }}</span>,
+            Source: <span class="font-medium">{{ suggestion.providerSource ||
+          'N/A' }}</span>
           </p>
         </div>
         <button class="ml-2 text-xs font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -4363,27 +4398,25 @@ button:disabled {
 ### PLIK: components/common/StatusBadge.vue
 ================================================================================
 
+<template>
+  <span class="badge" :class="badge.tone">
+    {{ badge.label }}
+  </span>
+</template>
+
 <script setup>
 import { computed } from 'vue';
 import { StatusBadgeViewModel } from '@/viewmodels/StatusBadgeViewModel';
-
 const props = defineProps({
   status: {
     type: String,
     default: 'UNKNOWN'
   }
 });
-
 const badge = computed(() => {
   return new StatusBadgeViewModel(props.status).toObject();
 });
 </script>
-
-<template>
-  <span class="badge" :class="badge.tone">
-    {{ badge.label }}
-  </span>
-</template>
 
 <style scoped>
 .badge {
@@ -8484,7 +8517,9 @@ const handleChangePassword = () => {
     <div v-else-if="state.error" class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
       <strong class="font-bold">Failed to load order details:</strong>
       <span class="block sm:inline">{{ state.error }}</span>
-      <span v-if="orderId"> (ID: {{ orderId }})</span>
+      <span v-if="orderId"> (ID: {{
+
+          orderId }})</span>
     </div>
 
     <div v-else-if="state.detail" class="editor-layout space-y-6">
@@ -8494,6 +8529,8 @@ const handleChangePassword = () => {
             Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
           </h2>
           <p class="text-sm text-gray-500">
+
+
             Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
             Status: <StatusBadge :status="state.detail.processingStatus" />
           </p>
@@ -8506,6 +8543,8 @@ const handleChangePassword = () => {
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Pickup Address</h3>
           <div class="p-4 space-y-4">
+
+
             <AddressDisplay
                 title="Original Pickup"
                 :address="state.detail.originalPickup"
@@ -8513,12 +8552,16 @@ const handleChangePassword = () => {
                 :reasonCode="state.detail.pickupReasonCode"
             />
             <AddressDisplay
+
+
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.pickupStoredAddress"
                 v-if="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Pickup Suggestions"
+
+
                 :suggestions="state.detail.suggestedPickup"
                 @accept="handleAcceptSuggestion('pickup', $event)"
             />
@@ -8526,17 +8569,23 @@ const handleChangePassword = () => {
                 side="pickup"
                 :initialAddress="state.editedPickup"
                 :placesAdapter="placesAdapter"
+
+
                 @update="handleFormUpdate"
             />
           </div>
           <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
-              <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
-                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+              <button @click="handleGeocode('pickup')"
+
+                      :disabled="state.geocodeLoading" class="button-secondary">
+                {{ state.geocodeLoading ?
+                  'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Pickup)' }}
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Pickup)' }}
               </button>
             </div>
           </div>
@@ -8545,6 +8594,8 @@ const handleChangePassword = () => {
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Delivery Address</h3>
           <div class="p-4 space-y-4">
+
+
             <AddressDisplay
                 title="Original Delivery"
                 :address="state.detail.originalDelivery"
@@ -8552,12 +8603,16 @@ const handleChangePassword = () => {
                 :reasonCode="state.detail.deliveryReasonCode"
             />
             <AddressDisplay
+
+
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.deliveryStoredAddress"
                 v-if="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Delivery Suggestions"
+
+
                 :suggestions="state.detail.suggestedDelivery"
                 @accept="handleAcceptSuggestion('delivery', $event)"
             />
@@ -8565,6 +8620,8 @@ const handleChangePassword = () => {
                 side="delivery"
                 :initialAddress="state.editedDelivery"
                 :placesAdapter="placesAdapter"
+
+
                 @update="handleFormUpdate"
             />
           </div>
@@ -8572,10 +8629,14 @@ const handleChangePassword = () => {
             <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
-                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+
+
+                {{ state.geocodeLoading ?
+                  'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Delivery)' }}
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Delivery)' }}
               </button>
             </div>
           </div>
@@ -8585,6 +8646,8 @@ const handleChangePassword = () => {
       <div class="editor-map bg-white shadow-md rounded-lg p-4">
         <h3 class="text-lg font-semibold text-gray-800 mb-2">Map Preview</h3>
         <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
+
+
         <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
           <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
           <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
@@ -8596,6 +8659,8 @@ const handleChangePassword = () => {
           <label for="applyToSimilar" class="flex items-center cursor-pointer">
             <input
                 id="applyToSimilar"
+
+
                 type="checkbox"
                 v-model="applyToSimilar"
                 class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -8603,8 +8668,11 @@ const handleChangePassword = () => {
             <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
           </label>
         </div>
+
+
         <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
-          {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+          {{ state.saveLoading ?
+            'Saving...' : 'Save Both & Go to Next' }}
         </button>
       </footer>
       <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
@@ -8620,10 +8688,8 @@ const handleChangePassword = () => {
 </template>
 
 <script setup>
-// *** MAP FIX: Import Leaflet CSS ***
-import 'leaflet/dist/leaflet.css';
-// *** END FIX ***
-
+// *** MAP FIX: REMOVED Leaflet CSS import (now in main.js) ***
+// import 'leaflet/dist/leaflet.css';
 import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
@@ -8632,7 +8698,8 @@ import { useToast } from '@/composables/useToast.js';
 import AddressDisplay from '@/components/AddressDisplay.vue';
 import AddressForm from '@/components/AddressForm.vue';
 import SuggestionList from '@/components/SuggestionList.vue';
-import StatusBadge from '@/components/common/StatusBadge.vue'; // Import StatusBadge
+import StatusBadge from '@/components/common/StatusBadge.vue';
+// Import StatusBadge
 
 // Import Manifesto architecture controllers
 import { MapController } from "@/controllers/MapController.js";
@@ -8644,18 +8711,15 @@ import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
 import { useWorklistStore } from '@/stores/WorklistStore.js';
 // To get the queue
 import { Address } from '@/domain/WorkbenchModels.js';
-
 // === Injections ===
 const orchestrator = inject("orchestrator");
 const geoRuntime = inject("geoRuntime");
 const toast = useToast();
-
 // === Route & Store ===
 const route = useRoute();
 const router = useRouter();
 const worklistStore = useWorklistStore();
 const orderId = ref(route.params.id);
-
 // === Local State ===
 const state = reactive({
   loading: true,
@@ -8695,13 +8759,13 @@ onMounted(async () => {
   // 1b. Get the places adapter (if it exists) for AddressForm
   try {
     placesAdapter.value = geoRuntime.placesAdapter();
-  } catch(e) {
+  } catch (e) {
     log.error("Could not get places adapter for AddressForm", e);
     placesAdapter.value = null;
   }
 
   // 2. Initialize Save Controllers
-  // *** FIX: Instantiate SaveFlowController correctly ***
+// *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
@@ -8710,7 +8774,6 @@ onMounted(async () => {
   // 3. Load Order Data (this will trigger the 'watch' block to init the map)
   await loadOrderData();
 });
-
 onUnmounted(() => {
   // Clean up map
   if (mapController) {
@@ -8724,15 +8787,16 @@ watch(mapContainer, async (newMapEl) => {
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
+      await mapController.init(newMapEl, {lat: 52.23, lon: 21.01, zoom: 6});
 
       // Inject the new mapController into the existing facade
       editorFacade = orchestrator.getEditor(mapController);
 
       log.info("MapController initialized and injected into facade.");
 
-      // Now draw the initial route (data is already loaded and geocoded)
-      if (state.editedPickup && state.editedDelivery) {
+
+      if (state.editedPickup && state.editedDelivery)
+      {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
             state.editedDelivery
@@ -8770,10 +8834,12 @@ async function loadOrderData() {
   // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
   if (result.ok) {
-    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+    const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
     state.detail = snap.detail;
-    state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.editedDelivery;
+// *** FIX: Create new Address objects to trigger reactivity ***
+    state.editedPickup = Address.from(snap.editedPickup);
+    state.editedDelivery = Address.from(snap.editedDelivery);
   } else {
     state.error = result.error.message;
     toast.error(`Failed to load order: ${state.error}`, 10000);
@@ -8820,7 +8886,7 @@ async function refreshRouteInfo() {
 function handleFormUpdate(side, field, value) {
   const target = side === 'pickup' ?
       state.editedPickup : state.editedDelivery;
-  const newAddress = new Address({ ...target, [field]: value });
+  const newAddress = new Address({...target, [field]: value});
   if (side === 'pickup') {
     state.editedPickup = newAddress;
     editorFacade.setManualPickup(newAddress);
@@ -8844,9 +8910,11 @@ function handleAcceptSuggestion(side, suggestionIndex) {
     commandBus.acceptDelivery(suggestionIndex);
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
+  const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
+  // *** FIX: Create new Address objects to trigger reactivity ***
+  state.editedPickup = Address.from(snap.editedPickup);
+  state.editedDelivery = Address.from(snap.editedDelivery);
 
   editorFacade.refreshRoute();
   refreshRouteInfo();
@@ -8857,22 +8925,23 @@ function handleAcceptSuggestion(side, suggestionIndex) {
 async function handleGeocode(side) {
   state.geocodeLoading = true;
   toast.info(`Geocoding ${side} address...`, 2000);
-
   const result = await editorFacade.geocodeAndFocus(side);
   if (result.ok) {
-    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+    const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
+    // *** FIX: Create new Address objects to trigger reactivity ***
     if (side === 'pickup') {
-      state.editedPickup = snap.editedPickup;
+      state.editedPickup = Address.from(snap.editedPickup);
     } else {
-      state.editedDelivery = snap.editedDelivery;
+      state.editedDelivery = Address.from(snap.editedDelivery);
     }
     await editorFacade.refreshRoute();
-    // Redraw route
+// Redraw route
     await refreshRouteInfo(); // Get new stats
     toast.success('Geocoding successful. Address updated.', 3000);
   } else {
     log.error(`Geocode failed for ${side}:`, result.error);
-    // *** FIX: Show a warning if geocode was not found ***
+// *** FIX: Show a warning if geocode was not found ***
     if (result.error.message.includes("Geocode not found")) {
       toast.warn(`Geocoding failed: Address not found by Nominatim.`, 5000);
     } else {
@@ -8889,9 +8958,11 @@ function handleUseOriginal(side) {
     commandBus.useOriginalDelivery();
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
+  const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
+  // *** FIX: Create new Address objects to trigger reactivity ***
+  state.editedPickup = Address.from(snap.editedPickup);
+  state.editedDelivery = Address.from(snap.editedDelivery);
 
   editorFacade.refreshRoute();
   refreshRouteInfo();
@@ -8973,13 +9044,15 @@ const log = {
 }
 
 .button-primary:hover:not(:disabled) {
-  background-color: #004a9c; /* Darker blue */
+  background-color: #004a9c;
+  /* Darker blue */
 }
 
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
-  border-color: #d1d5db; /* gray-300 */
+  border-color: #d1d5db;
+  /* gray-300 */
 }
 
 .button-secondary:hover:not(:disabled) {
@@ -9008,6 +9081,13 @@ const log = {
 
 .editor-footer .bulk-toggle {
   /* Styles are applied via flex utility classes */
+}
+
+/* *** MAP FIX: Ensure map container has a height *** */
+.map-container-element {
+  min-height: 300px;
+  /* Or h-64 md:h-80 as per the classes */
+  height: 300px;
 }
 </style>
 

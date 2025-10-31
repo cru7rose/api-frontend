@@ -6,7 +6,9 @@
     <div v-else-if="state.error" class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
       <strong class="font-bold">Failed to load order details:</strong>
       <span class="block sm:inline">{{ state.error }}</span>
-      <span v-if="orderId"> (ID: {{ orderId }})</span>
+      <span v-if="orderId"> (ID: {{
+
+          orderId }})</span>
     </div>
 
     <div v-else-if="state.detail" class="editor-layout space-y-6">
@@ -16,6 +18,8 @@
             Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
           </h2>
           <p class="text-sm text-gray-500">
+
+
             Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
             Status: <StatusBadge :status="state.detail.processingStatus" />
           </p>
@@ -28,6 +32,8 @@
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Pickup Address</h3>
           <div class="p-4 space-y-4">
+
+
             <AddressDisplay
                 title="Original Pickup"
                 :address="state.detail.originalPickup"
@@ -35,12 +41,16 @@
                 :reasonCode="state.detail.pickupReasonCode"
             />
             <AddressDisplay
+
+
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.pickupStoredAddress"
                 v-if="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Pickup Suggestions"
+
+
                 :suggestions="state.detail.suggestedPickup"
                 @accept="handleAcceptSuggestion('pickup', $event)"
             />
@@ -48,17 +58,23 @@
                 side="pickup"
                 :initialAddress="state.editedPickup"
                 :placesAdapter="placesAdapter"
+
+
                 @update="handleFormUpdate"
             />
           </div>
           <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
-              <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
-                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+              <button @click="handleGeocode('pickup')"
+
+                      :disabled="state.geocodeLoading" class="button-secondary">
+                {{ state.geocodeLoading ?
+                  'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Pickup)' }}
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Pickup)' }}
               </button>
             </div>
           </div>
@@ -67,6 +83,8 @@
         <div class="address-column bg-white shadow-md rounded-lg">
           <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Delivery Address</h3>
           <div class="p-4 space-y-4">
+
+
             <AddressDisplay
                 title="Original Delivery"
                 :address="state.detail.originalDelivery"
@@ -74,12 +92,16 @@
                 :reasonCode="state.detail.deliveryReasonCode"
             />
             <AddressDisplay
+
+
                 title="Stored (TrackIT - Mismatched)"
                 :address="state.detail.deliveryStoredAddress"
                 v-if="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
             />
             <SuggestionList
                 title="Delivery Suggestions"
+
+
                 :suggestions="state.detail.suggestedDelivery"
                 @accept="handleAcceptSuggestion('delivery', $event)"
             />
@@ -87,6 +109,8 @@
                 side="delivery"
                 :initialAddress="state.editedDelivery"
                 :placesAdapter="placesAdapter"
+
+
                 @update="handleFormUpdate"
             />
           </div>
@@ -94,10 +118,14 @@
             <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
-                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+
+
+                {{ state.geocodeLoading ?
+                  'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Delivery)' }}
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Delivery)' }}
               </button>
             </div>
           </div>
@@ -107,6 +135,8 @@
       <div class="editor-map bg-white shadow-md rounded-lg p-4">
         <h3 class="text-lg font-semibold text-gray-800 mb-2">Map Preview</h3>
         <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
+
+
         <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
           <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
           <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
@@ -118,6 +148,8 @@
           <label for="applyToSimilar" class="flex items-center cursor-pointer">
             <input
                 id="applyToSimilar"
+
+
                 type="checkbox"
                 v-model="applyToSimilar"
                 class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -125,8 +157,11 @@
             <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
           </label>
         </div>
+
+
         <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
-          {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+          {{ state.saveLoading ?
+            'Saving...' : 'Save Both & Go to Next' }}
         </button>
       </footer>
       <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
@@ -144,7 +179,6 @@
 <script setup>
 // *** MAP FIX: REMOVED Leaflet CSS import (now in main.js) ***
 // import 'leaflet/dist/leaflet.css';
-
 import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
@@ -175,7 +209,6 @@ const route = useRoute();
 const router = useRouter();
 const worklistStore = useWorklistStore();
 const orderId = ref(route.params.id);
-
 // === Local State ===
 const state = reactive({
   loading: true,
@@ -215,14 +248,13 @@ onMounted(async () => {
   // 1b. Get the places adapter (if it exists) for AddressForm
   try {
     placesAdapter.value = geoRuntime.placesAdapter();
-  } catch(e) {
+  } catch (e) {
     log.error("Could not get places adapter for AddressForm", e);
     placesAdapter.value = null;
   }
 
-  // 2.
-  Initialize Save Controllers
-  // *** FIX: Instantiate SaveFlowController correctly ***
+  // 2. Initialize Save Controllers
+// *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
@@ -244,16 +276,16 @@ watch(mapContainer, async (newMapEl) => {
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
+      await mapController.init(newMapEl, {lat: 52.23, lon: 21.01, zoom: 6});
 
       // Inject the new mapController into the existing facade
       editorFacade = orchestrator.getEditor(mapController);
 
       log.info("MapController initialized and injected into facade.");
 
-      // Now
-      draw the initial route (data is already loaded and geocoded)
-      if (state.editedPickup && state.editedDelivery) {
+
+      if (state.editedPickup && state.editedDelivery)
+      {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
             state.editedDelivery
@@ -264,8 +296,7 @@ watch(mapContainer, async (newMapEl) => {
       await refreshRouteInfo();
 
     } catch (err) {
-      log.error("Failed to
-      initialize MapController in watch block:", err);
+      log.error("Failed to initialize MapController in watch block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
   } else if (!newMapEl && mapController) {
@@ -292,11 +323,12 @@ async function loadOrderData() {
   // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
   if (result.ok) {
-    // *** BUGFIX: Access root snapshot, not snapshot.editor ***
     const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
     state.detail = snap.detail;
-    state.editedPickup = snap.editedPickup;
-    state.editedDelivery = snap.editedDelivery;
+// *** FIX: Create new Address objects to trigger reactivity ***
+    state.editedPickup = Address.from(snap.editedPickup);
+    state.editedDelivery = Address.from(snap.editedDelivery);
   } else {
     state.error = result.error.message;
     toast.error(`Failed to load order: ${state.error}`, 10000);
@@ -343,7 +375,7 @@ async function refreshRouteInfo() {
 function handleFormUpdate(side, field, value) {
   const target = side === 'pickup' ?
       state.editedPickup : state.editedDelivery;
-  const newAddress = new Address({ ...target, [field]: value });
+  const newAddress = new Address({...target, [field]: value});
   if (side === 'pickup') {
     state.editedPickup = newAddress;
     editorFacade.setManualPickup(newAddress);
@@ -367,10 +399,11 @@ function handleAcceptSuggestion(side, suggestionIndex) {
     commandBus.acceptDelivery(suggestionIndex);
   }
   // Update local state from facade
-  // *** BUGFIX: Access root snapshot, not snapshot.editor ***
   const snap = editorFacade.snapshot();
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
+// *** BUGFIX: Access root snapshot ***
+  // *** FIX: Create new Address objects to trigger reactivity ***
+  state.editedPickup = Address.from(snap.editedPickup);
+  state.editedDelivery = Address.from(snap.editedDelivery);
 
   editorFacade.refreshRoute();
   refreshRouteInfo();
@@ -383,12 +416,13 @@ async function handleGeocode(side) {
   toast.info(`Geocoding ${side} address...`, 2000);
   const result = await editorFacade.geocodeAndFocus(side);
   if (result.ok) {
-    // *** BUGFIX: Access root snapshot, not snapshot.editor ***
     const snap = editorFacade.snapshot();
+// *** BUGFIX: Access root snapshot ***
+    // *** FIX: Create new Address objects to trigger reactivity ***
     if (side === 'pickup') {
-      state.editedPickup = snap.editedPickup;
+      state.editedPickup = Address.from(snap.editedPickup);
     } else {
-      state.editedDelivery = snap.editedDelivery;
+      state.editedDelivery = Address.from(snap.editedDelivery);
     }
     await editorFacade.refreshRoute();
 // Redraw route
@@ -413,10 +447,11 @@ function handleUseOriginal(side) {
     commandBus.useOriginalDelivery();
   }
   // Update local state from facade
-  // *** BUGFIX: Access root snapshot, not snapshot.editor ***
   const snap = editorFacade.snapshot();
-  state.editedPickup = snap.editedPickup;
-  state.editedDelivery = snap.editedDelivery;
+// *** BUGFIX: Access root snapshot ***
+  // *** FIX: Create new Address objects to trigger reactivity ***
+  state.editedPickup = Address.from(snap.editedPickup);
+  state.editedDelivery = Address.from(snap.editedDelivery);
 
   editorFacade.refreshRoute();
   refreshRouteInfo();
@@ -539,7 +574,8 @@ const log = {
 
 /* *** MAP FIX: Ensure map container has a height *** */
 .map-container-element {
-  min-height: 300px; /* Or h-64 md:h-80 as per the classes */
+  min-height: 300px;
+  /* Or h-64 md:h-80 as per the classes */
   height: 300px;
 }
 </style>
