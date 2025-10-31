@@ -1,6 +1,6 @@
 <template>
   <div class="suggestion-list p-4">
-    <h3 v-if="title" class="text-sm font-semibold text-gray-700 mb-2">{{ title }} ({{ suggestions.length }})</h3>
+    <h3 v-if="title" class="text-sm font-semibold text-gray-700 mb-2">{{ title }} ({{ (suggestions || []).length }})</h3>
     <ul v-if="suggestions && suggestions.length > 0" class="max-h-48 overflow-y-auto space-y-1 pr-2">
       <li v-for="(suggestion, index) in suggestions" :key="index"
           class="p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition flex justify-between items-center group"

@@ -9,8 +9,7 @@
       <span v-if="orderId"> (ID: {{ orderId }})</span>
     </div>
 
-    <div
-        v-else-if="state.detail" class="editor-layout space-y-6">
+    <div v-else-if="state.detail" class="editor-layout space-y-6">
       <header class="editor-header bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
         <div>
           <h2 class="text-xl font-bold text-gray-800">
@@ -21,73 +20,84 @@
             Status: <StatusBadge :status="state.detail.processingStatus" />
           </p>
         </div>
+        <router-link to="/worklist" class="button-secondary">Back to Worklist</router-link>
       </header>
 
       <div class="editor-columns grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        <div class="address-column bg-white shadow-md rounded-lg space-y-4">
-          <AddressDisplay
-              title="Original Pickup"
-              :address="state.detail.originalPickup"
-              :alias="state.detail.originalPickup.alias"
-
-          />
-          <SuggestionList
-              title="Pickup Suggestions"
-              :suggestions="state.detail.suggestedPickup"
-              @accept="handleAcceptSuggestion('pickup', $event)"
-          />
-          <AddressForm
-              side="pickup"
-
-              :initialAddress="state.editedPickup"
-              :placesAdapter="placesAdapter"
-              @update="handleFormUpdate"
-          />
-          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+        <div class="address-column bg-white shadow-md rounded-lg">
+          <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Pickup Address</h3>
+          <div class="p-4 space-y-4">
+            <AddressDisplay
+                title="Original Pickup"
+                :address="state.detail.originalPickup"
+                :alias="state.detail.originalPickup.alias"
+                :reasonCode="state.detail.pickupReasonCode"
+            />
+            <AddressDisplay
+                title="Stored (TrackIT - Mismatched)"
+                :address="state.detail.pickupStoredAddress"
+                vif="state.detail.pickupReasonCode === 'ALIAS_MISMATCH'"
+            />
+            <SuggestionList
+                title="Pickup Suggestions"
+                :suggestions="state.detail.suggestedPickup"
+                @accept="handleAcceptSuggestion('pickup', $event)"
+            />
+            <AddressForm
+                side="pickup"
+                :initialAddress="state.editedPickup"
+                :placesAdapter="placesAdapter"
+                @update="handleFormUpdate"
+            />
+          </div>
+          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
-                {{ state.geocodeLoading ?
-                  'Geocoding...' : 'Geocode Edited' }}
+                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ?
-                  'Saving...' : 'Save & Next (Pickup)' }}
+                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Pickup)' }}
               </button>
             </div>
           </div>
         </div>
 
-        <div class="address-column bg-white shadow-md rounded-lg space-y-4">
-          <AddressDisplay
-              title="Original Delivery"
-              :address="state.detail.originalDelivery"
-              :alias="state.detail.originalDelivery.alias"
-
-          />
-          <SuggestionList
-              title="Delivery Suggestions"
-              :suggestions="state.detail.suggestedDelivery"
-              @accept="handleAcceptSuggestion('delivery', $event)"
-          />
-          <AddressForm
-              side="delivery"
-
-              :initialAddress="state.editedDelivery"
-              :placesAdapter="placesAdapter"
-              @update="handleFormUpdate"
-          />
-          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+        <div class="address-column bg-white shadow-md rounded-lg">
+          <h3 class="text-lg font-semibold text-gray-800 p-4 border-b border-gray-200">Delivery Address</h3>
+          <div class="p-4 space-y-4">
+            <AddressDisplay
+                title="Original Delivery"
+                :address="state.detail.originalDelivery"
+                :alias="state.detail.originalDelivery.alias"
+                :reasonCode="state.detail.deliveryReasonCode"
+            />
+            <AddressDisplay
+                title="Stored (TrackIT - Mismatched)"
+                :address="state.detail.deliveryStoredAddress"
+                vif="state.detail.deliveryReasonCode === 'ALIAS_MISMATCH'"
+            />
+            <SuggestionList
+                title="Delivery Suggestions"
+                :suggestions="state.detail.suggestedDelivery"
+                @accept="handleAcceptSuggestion('delivery', $event)"
+            />
+            <AddressForm
+                side="delivery"
+                :initialAddress="state.editedDelivery"
+                :placesAdapter="placesAdapter"
+                @update="handleFormUpdate"
+            />
+          </div>
+          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100 bg-gray-50 rounded-b-lg">
             <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
             <div class="flex gap-2">
               <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
-
                 {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
               </button>
               <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-                {{ state.saveLoading ?
-                  'Saving...' : 'Save & Next (Delivery)' }}
+                {{ state.saveLoading ? 'Saving...' : 'Save & Next (Delivery)' }}
               </button>
             </div>
           </div>
@@ -109,7 +119,6 @@
             <input
                 id="applyToSimilar"
                 type="checkbox"
-
                 v-model="applyToSimilar"
                 class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
@@ -117,8 +126,7 @@
           </label>
         </div>
         <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
-          {{ state.saveLoading ?
-            'Saving...' : 'Save Both & Go to Next' }}
+          {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
         </button>
       </footer>
       <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
@@ -134,6 +142,10 @@
 </template>
 
 <script setup>
+// *** MAP FIX: Import Leaflet CSS ***
+import 'leaflet/dist/leaflet.css';
+// *** END FIX ***
+
 import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
@@ -210,8 +222,7 @@ onMounted(async () => {
     placesAdapter.value = null;
   }
 
-  // *** BUILD FIX: Merged broken comment ***
-// 2. Initialize Save Controllers
+  // 2. Initialize Save Controllers
   // *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
@@ -242,8 +253,7 @@ watch(mapContainer, async (newMapEl) => {
 
       log.info("MapController initialized and injected into facade.");
 
-      // *** BUILD FIX: Merged broken comment into one line ***
-// Now draw the initial route (data is already loaded and geocoded)
+      // Now draw the initial route (data is already loaded and geocoded)
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -255,7 +265,6 @@ watch(mapContainer, async (newMapEl) => {
       await refreshRouteInfo();
 
     } catch (err) {
-      // *** BUILD FIX: Corrected unterminated string literal ***
       log.error("Failed to initialize MapController in watch block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
@@ -380,12 +389,17 @@ async function handleGeocode(side) {
       state.editedDelivery = snap.editedDelivery;
     }
     await editorFacade.refreshRoute();
-// Redraw route
+    // Redraw route
     await refreshRouteInfo(); // Get new stats
     toast.success('Geocoding successful. Address updated.', 3000);
   } else {
     log.error(`Geocode failed for ${side}:`, result.error);
-    toast.error(`Geocoding failed: ${result.error.message}`, 5000);
+    // *** FIX: Show a warning if geocode was not found ***
+    if (result.error.message.includes("Geocode not found")) {
+      toast.warn(`Geocoding failed: Address not found by Nominatim.`, 5000);
+    } else {
+      toast.error(`Geocoding failed: ${result.error.message}`, 5000);
+    }
   }
   state.geocodeLoading = false;
 }
@@ -501,7 +515,7 @@ const log = {
 .address-column {
   display: flex;
   flex-direction: column;
-  gap: 1rem; /* 16px */
+  /* Removed fixed gap, letting inner components manage space */
 }
 
 .column-actions {

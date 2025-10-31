@@ -1,12 +1,18 @@
 <template>
-  <div class="address-display p-4 bg-gray-50 rounded-lg border border-gray-200">
-    <h3 v-if="title" class="text-sm font-semibold text-gray-700 mb-2">{{ title }}</h3>
+  <div class="address-display">
+    <h3 v-if="title" class="text-sm font-semibold text-gray-700 mb-2">{{ title }} <span v-if="reasonCode" class="ml-2 font-mono text-xs text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">{{ reasonCode }}</span></h3>
     <div v-if="alias" class="alias-display mb-2">
       <span class="text-xs font-medium text-gray-500 uppercase">Alias:</span>
       <span class="ml-2 font-mono text-sm text-blue-600">{{ alias }}</span>
     </div>
-    <pre v-if="address" class="text-xs font-mono text-gray-800 p-3 bg-white rounded border border-gray-200">{{ formattedAddress }}</pre>
-    <p v-else class="na-text text-sm text-gray-500 italic">N/A</p>
+
+    <div v-if="address" class="p-3 bg-gray-50 rounded border border-gray-200">
+      <pre class="text-xs font-mono text-gray-800">{{ formattedAddress }}</pre>
+      <div v-if="address.latitude || address.longitude" class="mt-2 pt-2 border-t border-gray-200">
+        <span class="text-xs font-mono text-blue-600">Lat: {{ address.latitude || 'N/A' }}, Lon: {{ address.longitude || 'N/A' }}</span>
+      </div>
+    </div>
+    <p v-else class="na-text text-sm text-gray-500 italic p-3 bg-gray-50 rounded border border-gray-200">N/A</p>
   </div>
 </template>
 
@@ -15,15 +21,25 @@ import { computed } from 'vue';
 const props = defineProps({
   title: String,
   address: Object, // Expects Address-like object
-  alias: String,   // Added alias prop
+  alias: String,
+  reasonCode: String, // To display ALIAS_MISMATCH etc.
 });
 const formattedAddress = computed(() => {
   if (!props.address) return "N/A";
   try {
-    // Create a copy for display, remove alias/name if it exists
+    // Create a copy for display, remove fields we show separately
     const displayObj = { ...props.address };
     delete displayObj.alias;
     delete displayObj.name;
+    delete displayObj.latitude;
+    delete displayObj.longitude;
+
+    // Filter out null/empty values for a cleaner display
+    Object.keys(displayObj).forEach(key => {
+      if (displayObj[key] === null || displayObj[key] === "") {
+        delete displayObj[key];
+      }
+    });
 
     return JSON.stringify(displayObj, null, 2);
   } catch {
@@ -33,7 +49,6 @@ const formattedAddress = computed(() => {
 </script>
 
 <style scoped>
-/* Scoped styles are minimal as Tailwind is used */
 pre {
   white-space: pre-wrap;
   word-break: break-all;

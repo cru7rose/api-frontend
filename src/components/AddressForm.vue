@@ -1,5 +1,5 @@
 <template>
-  <div class="address-form p-4">
+  <div class="address-form p-4 border-t border-gray-100">
     <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
     <div class="form-group mb-3">
 
@@ -201,13 +201,13 @@ const activeField = ref(null);
 const activeSuggestionIndex = ref(-1);
 const activeSuggestionSource = ref('none'); // 'google' or 'backend'
 
-const api = new AddressExceptionApi();
+// *** BUGFIX: Remove broken API dependency ***
+// const api = new AddressExceptionApi();
 const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-const backendDebouncer = new DebounceTimer(300);
-// Debounce for backend API calls
+// const backendDebouncer = new DebounceTimer(300); // REMOVED
 
 const addressModelValue = computed(() => props.initialAddress);
-const sideLabel = computed(() => props.side.charAt(0).toUpperCase() + props.side.slice(1));
+const sideLabel = computed(() => "Edit " + props.side.charAt(0).toUpperCase() + props.side.slice(1));
 const localPlacesAdapter = ref(props.placesAdapter);
 
 // --- Watch for adapter prop ---
@@ -245,56 +245,10 @@ const fetchGoogleSuggestions = async (field, value) => {
     suggestionsLoading.value = false;
   }
 };
-const fetchBackendSuggestions = async (field) => {
-  // Only proceed if Google is not currently active
-  if (activeSuggestionSource.value === 'google' && suggestions.value.length > 0) return;
-  activeSuggestionSource.value = 'backend';
-  activeField.value = field;
-  activeSuggestionIndex.value = -1;
-  suggestionsLoading.value = true;
-  suggestionsError.value = null;
-  showSuggestions.value = true;
-// Show dropdown
-  suggestions.value = []; // Clear previous
 
-  let result;
-  let contextMissing = false;
-  try {
-    const addr = addressModelValue.value;
-    if (field === 'street') {
-      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first.";
-        contextMissing = true; }
-      else result = await api.getStreetsForPostalCode(addr.postalCode, addr.city);
-    } else if (field === 'postalCode') {
-      if (!addr?.street || !addr?.city) { suggestionsError.value = "Enter Street and City first.";
-        contextMissing = true; }
-      else result = await api.getPostalCodesForStreet(addr.street, addr.city);
-    } else if (field === 'city') {
-      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first.";
-        contextMissing = true; }
-      else result = await api.getCitiesForPostalCode(addr.postalCode);
-    } else {
-      contextMissing = true;
-// Not a field we fetch for
-    }
+// *** BUGFIX: Remove broken backend suggestion logic ***
+// const fetchBackendSuggestions = ... (REMOVED)
 
-    if (contextMissing) {
-      suggestions.value = [];
-// Do not show "no results" if context was missing
-      if (!suggestionsError.value) showSuggestions.value = false;
-    } else if (result && result.ok) {
-      suggestions.value = result.value;
-// Expecting AddressLookupSuggestionDTO[]
-    } else if (result) {
-      suggestionsError.value = result.error.message;
-    }
-  } catch (e) {
-    suggestionsError.value = `Failed to fetch ${field} suggestions.`;
-    console.error(`fetchBackendSuggestions (${field}) error:`, e);
-  } finally {
-    suggestionsLoading.value = false;
-  }
-};
 // --- Event Handlers ---
 
 const emitUpdate = (field, value) => {
@@ -302,32 +256,31 @@ const emitUpdate = (field, value) => {
 };
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-// Trigger Google Places (debounced) as primary suggestion source on type
+  // Trigger Google Places (debounced) as primary suggestion source on type
   if (field === 'street' || field === 'city' || field === 'postalCode') {
     placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
   } else {
     // Clear suggestions for other fields
     hideSuggestions();
     placesDebouncer.cancel();
-    backendDebouncer.cancel();
+    // backendDebouncer.cancel(); // REMOVED
   }
 };
 const handleFocus = (field) => {
   // Hide any other open dropdowns
   hideSuggestions();
-// Set active field for keyboard nav and context
+  // Set active field for keyboard nav and context
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   activeSuggestionSource.value = 'none';
-// Reset source
+  // Reset source
 
-  // Trigger backend suggestions (debounced) on focus
-  if (field === 'street' || field === 'postalCode' || field === 'city') {
-    // Only run if Google suggestions aren't already active from typing
-    if (suggestions.value.length === 0) {
-      backendDebouncer.run(() => fetchBackendSuggestions(field));
-    }
-  }
+  // *** BUGFIX: Removed broken backend logic ***
+  // if (field === 'street' || field === 'postalCode' || field === 'city') {
+  //   if (suggestions.value.length === 0) {
+  //     backendDebouncer.run(() => fetchBackendSuggestions(field));
+  //   }
+  // }
 };
 
 const selectSuggestion = (suggestion) => {
@@ -347,26 +300,9 @@ const selectSuggestion = (suggestion) => {
     if (localPlacesAdapter.value) {
       localPlacesAdapter.value.session.renew();
     }
-  } else if (source === 'backend') {
-    // Backend suggestion selected (AddressLookupSuggestionDTO)
-    const field = activeField.value;
-// Field that was focused
-    emitUpdate(field, suggestion.value);
-    if (suggestion.latitude != null) emitUpdate('latitude', suggestion.latitude);
-    if (suggestion.longitude != null) emitUpdate('longitude', suggestion.longitude);
-
-    // Auto-fetch related fields
-    nextTick(() => {
-      if (field === 'postalCode') {
-        fetchCitySuggestions();
-        fetchStreetSuggestions();
-      } else if (field === 'city') {
-        fetchPostalCodeSuggestions();
-      } else if (field === 'street') {
-        fetchPostalCodeSuggestions();
-      }
-    });
   }
+  // *** BUGFIX: Removed broken 'backend' suggestion logic ***
+  // else if (source === 'backend') { ... }
 
   hideSuggestions();
 };
@@ -380,7 +316,6 @@ const hideSuggestions = () => {
     suggestions.value = [];
     suggestionsError.value = null;
   }, 150);
-// Delay closing dropdown
 };
 
 const formatSuggestion = (s) => {
@@ -418,7 +353,7 @@ const handleKeydown = (event) => {
 };
 onUnmounted(() => {
   placesDebouncer.cancel();
-  backendDebouncer.cancel();
+  // backendDebouncer.cancel(); // REMOVED
 });
 </script>
 
