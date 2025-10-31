@@ -29,6 +29,7 @@ import '@/assets/theme.css';
     const geoProviderConfig = {
         map: (config?.VITE_MAP_PROVIDER || 'leaflet').toLowerCase(),
         geocode: (config?.VITE_GEOCODE_PROVIDER || 'nominatim').toLowerCase(),
+
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
 
@@ -40,10 +41,11 @@ import '@/assets/theme.css';
         routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey =
+
         config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
 
     const geoRuntime = new GeoRuntime(geoProviderConfig);
-    // 4. Initialize GeoRuntime
+// 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
         console.log("[main.js] Geo Runtime initialization attempted.");

@@ -3,15 +3,16 @@
 // FILE: src/services/AddressExceptionApi.js
 // REASON: Add 'saveResubmission' method for new save flow.
 //         Update _getStoredAddressLabel to show raw reason codes.
+// REFACTORED: Renamed 'saveResubmission' to 'saveApproval' and pointed it to the
+//             correct backend endpoint (/api/orders/{barcode}/approve) to fix the save logic.
 // ============================================================================
-// FILE: src/services/AddressExceptionApi.js (Supersedes previous version)
 import api from "@/services/api";
 import { Result } from "@/domain/Result";
 import { Address } from "@/domain/WorkbenchModels";
 
 /**
  * ARCHITECTURE: API client for address-related operations.
- * UPDATED: Added saveResubmission.
+ * UPDATED: 'saveResubmission' is now 'saveApproval' and targets the correct endpoint.
  * UPDATED: _getStoredAddressLabel now returns the raw reason code.
  */
 export class AddressExceptionApi {
@@ -56,25 +57,21 @@ export class AddressExceptionApi {
 
             // --- Map Original Addresses from OrderEvent (now includes alias/name) ---
             const originalEvent = this._safeParseJson(backendDto.originalOrderEventJson);
-
             const originalPickup = Address.from({
                 ...backendDto.pickupAddress, // Contains street, houseNo, postal, city, lat, lon
                 alias: originalEvent?.pickUpAlias || backendDto.pickupAlias, // Get alias from event
                 name: originalEvent?.pickUpName || null // Get name from event
             });
-
             const originalDelivery = Address.from({
                 ...backendDto.deliveryAddress,
                 alias: originalEvent?.deliveryAlias || backendDto.deliveryAlias,
                 name: originalEvent?.deliveryName || null
             });
-
-            // --- Map Stored Addresses (if they exist) ---
+// --- Map Stored Addresses (if they exist) ---
             const pickupStoredDisplay = backendDto.pickupStoredAddress ?
                 Address.from(backendDto.pickupStoredAddress) : null;
             const deliveryStoredDisplay = backendDto.deliveryStoredAddress ? Address.from(backendDto.deliveryStoredAddress) : null;
-
-            // --- *** FIX: Show raw reason code *** ---
+// --- *** FIX: Show raw reason code *** ---
             const pickupStoredLabel = this._getStoredAddressLabel(backendDto.pickupReasonCode, 'Pickup');
             const deliveryStoredLabel = this._getStoredAddressLabel(backendDto.deliveryReasonCode, 'Delivery');
             // --- *** END FIX *** ---
@@ -84,17 +81,21 @@ export class AddressExceptionApi {
                 barcode: backendDto.barcode,
                 requestId: backendDto.requestId,
                 customerId: backendDto.customerId,
+
                 sourceSystem: backendDto.sourceSystem,
                 processingStatus: backendDto.processingStatus,
                 createdAt: backendDto.createdAt,
                 updatedAt: backendDto.updatedAt,
 
                 // --- Use the newly constructed original addresses ---
+
                 originalPickup: originalPickup,
                 originalDelivery: originalDelivery,
 
-                pickupReasonCode: backendDto.pickupReasonCode || null,
-                deliveryReasonCode: backendDto.deliveryReasonCode || null,
+                pickupReasonCode: backendDto.pickupReasonCode ||
+                    null,
+                deliveryReasonCode: backendDto.deliveryReasonCode ||
+                    null,
 
                 pickupStoredAddress: pickupStoredDisplay,
                 deliveryStoredAddress: deliveryStoredDisplay,
@@ -108,10 +109,12 @@ export class AddressExceptionApi {
                     backendDto.suggestedDelivery : [],
 
                 // --- Pass original event JSON for resubmission ---
-                originalOrderEventJson: backendDto.originalOrderEventJson || null,
+                originalOrderEventJson: backendDto.originalOrderEventJson ||
+                    null,
 
                 // Find the associated errorEventId (if any)
-                relatedError: backendDto.relatedError || null // (This DTO needs to include the eventId)
+                relatedError: backendDto.relatedError ||
+                    null // (This DTO needs to include the eventId)
             };
             return Result.ok(frontendDetail);
         } catch (e) {
@@ -126,36 +129,46 @@ export class AddressExceptionApi {
     }
 
     /**
-     * @deprecated Old save flow. Use saveResubmission instead.
+     * @deprecated Old save flow.
+     Use saveApproval instead.
      */
     async saveCorrection(body, idempotencyToken = null) {
-        log.warn("DEPRECATED: saveCorrection called. Use saveResubmission.");
-        return Result.fail(new Error("saveCorrection is deprecated. Use saveResubmission."));
+        log.warn("DEPRECATED: saveCorrection called. Use saveApproval.");
+        return Result.fail(new Error("saveCorrection is deprecated. Use saveApproval."));
+    }
+
+    /**
+     * @deprecated Old save flow.
+     Use saveApproval instead.
+     */
+    async saveResubmission(errorEventId, resubmitPayload) {
+        log.warn("DEPRECATED: saveResubmission called. Use saveApproval.");
+        return Result.fail(new Error("saveResubmission is deprecated. Use saveApproval."));
     }
 
     /**
      * NEW METHOD: Submits a corrected payload to resolve a processing error.
      * This is the new "Save" logic for the editor.
-     * @param {string} errorEventId - The Event ID of the error being resolved.
-     * @param {object} resubmitPayload - The ResubmitRequestDto (correctedRawPayload, applyToSimilar).
+     * @param {string} barcode - The barcode of the order being resolved.
+     * @param {object} correctionPayload - The OrderCorrectionRequestDTO.
      */
-    async saveResubmission(errorEventId, resubmitPayload) {
-        if (!errorEventId) {
-            return Result.fail(new Error("Cannot save: Original Error Event ID is missing."));
+    async saveApproval(barcode, correctionPayload) {
+        if (!barcode) {
+            return Result.fail(new Error("Cannot save: Barcode is missing."));
         }
-        if (!resubmitPayload || !resubmitPayload.correctedRawPayload) {
-            return Result.fail(new Error("Cannot save: Corrected payload is missing."));
+        if (!correctionPayload) {
+            return Result.fail(new Error("Cannot save: Correction payload is missing."));
         }
 
         try {
-            // POST /processing-errors/{eventId}/resubmit
+            // POST /api/orders/{barcode}/approve
             const res = await this.client.post(
-                `/processing-errors/${encodeURIComponent(errorEventId)}/resubmit`,
-                resubmitPayload
+                `/api/orders/${encodeURIComponent(barcode)}/approve`,
+                correctionPayload
             );
             return Result.ok(res.data || true);
         } catch (e) {
-            console.error(`Error saving/resubmitting correction for event ${errorEventId}:`, e);
+            console.error(`Error saving correction for barcode ${barcode}:`, e);
             const errorMessage = e.response?.data?.error || e.message || "Failed to save correction.";
             return Result.fail(new Error(errorMessage));
         }
@@ -207,7 +220,7 @@ export class AddressExceptionApi {
     _getStoredAddressLabel(reasonCode, side) {
         // --- *** FIX: Show raw reason code *** ---
         if (reasonCode) return reasonCode;
-        // --- *** END FIX *** ---
+// --- *** END FIX *** ---
 
         // Fallback for older data that might not have a reason code
         return `Original ${side}`;
@@ -223,3 +236,8 @@ export class AddressExceptionApi {
         }
     }
 }
+
+// Basic logger shim
+const log = {
+    warn: (...args) => console.warn(...args),
+};

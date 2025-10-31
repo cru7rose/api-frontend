@@ -14,9 +14,10 @@ import { AddressNormalizer } from '@/services/AddressNormalizer';
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
         // *** FIX: Apply defaults internally to handle null/undefined inputs ***
-        const effectiveUrl = nominatimUrl || '/nominatim/search.php'; // *** UPDATED DEFAULT ***
+        const effectiveUrl = nominatimUrl ||
+            '/nominatim/search.php'; // *** UPDATED DEFAULT ***
         const effectiveEmail = email || 'triage-app@example.com';
-        // *** END FIX ***
+// *** END FIX ***
 
         this.baseUrl = effectiveUrl.replace(/\/+$/, "");
         this.email = effectiveEmail;
@@ -42,14 +43,14 @@ export class NominatimGeocodingAdapter {
             postalcode: address.postalCode || '',
             country: address.country || 'PL',
             format: 'jsonv2',
+
             addressdetails: '1',
             limit: '1',
             email: this.email,
         });
-
-        // *** FIX: No longer appends '/search' ***
+// *** FIX: No longer appends '/search' ***
         const url = `${this.baseUrl}?${params.toString()}`;
-        // *** END FIX ***
+// *** END FIX ***
 
         const queryDesc = `${params.get('street')}, ${params.get('postalcode')} ${params.get('city')}`;
         log.debug(`[Nominatim] Geocoding query: ${queryDesc}`);
@@ -68,7 +69,8 @@ export class NominatimGeocodingAdapter {
             const best = results[0];
             const components = best.address || {};
             const lat = best.lat ? parseFloat(best.lat) : null;
-            const lon = best.lon ? parseFloat(best.lon) : null;
+            const lon = best.lon ?
+                parseFloat(best.lon) : null;
 
             if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
                 log.warn(`[Nominatim] Result for query '${queryDesc}' missing valid coordinates. Lat: ${best.lat}, Lon: ${best.lon}`);
@@ -76,18 +78,24 @@ export class NominatimGeocodingAdapter {
             }
 
             const normalized = {
-                street: components.road || address.street || null,
-                houseNumber: components.house_number || address.houseNumber || null,
-                postalCode: components.postcode || address.postalCode || null,
-                city: components.city || components.town || components.village || address.city || null,
+                street: components.road ||
+                    address.street || null,
+                houseNumber: components.house_number ||
+                    address.houseNumber || null,
+                postalCode: components.postcode ||
+                    address.postalCode || null,
+                city: components.city ||
+                    components.town || components.village || address.city || null,
                 country: (components.country_code || address.country || 'pl').toUpperCase(),
                 latitude: lat,
                 longitude: lon,
                 _provider: 'Nominatim',
                 _displayName: best.display_name,
+
                 _osmType: best.osm_type,
                 _osmId: best.osm_id,
-                _confidence: best.importance ? parseFloat(best.importance) : null,
+                _confidence: best.importance ?
+                    parseFloat(best.importance) : null,
             };
             log.debug(`[Nominatim] Geocode success for query '${queryDesc}'. Result: Lat=${normalized.latitude}, Lon=${normalized.longitude}`);
             return normalized;

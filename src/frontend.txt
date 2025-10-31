@@ -190,7 +190,7 @@ provide('currentUser', readonly(user));
 // ============================================================================
 // Frontend: Update main.js
 // REASON: Default OSRM routing URL to the proxy path '/osrm'.
-// REASON: Fix Nominatim default URL to include /search.
+// REASON: Fix Nominatim default URL to include /search.php.
 // REASON: Provide geoRuntime to the Vue app instance.
 // ============================================================================
 // FILE: src/main.js
@@ -221,19 +221,17 @@ import '@/assets/theme.css';
         places: (config?.VITE_PLACES_PROVIDER || 'none').toLowerCase(),
         nominatimEmail: config?.VITE_NOMINATIM_EMAIL || 'triage-app@example.com',
 
-        // Use the proxy path, not a direct IP
-        // *** FIX: Add /search to the default path ***
-        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search',
+        // *** THIS IS THE FIX FOR 406 Not Acceptable ***
+        // Your server requires search.php
+        nominatimUrl: config?.VITE_NOMINATIM_URL || '/nominatim/search.php',
 
-        // *** THIS IS THE FIX FOR "Routing: None" ***
-        // It tells GeoRuntime to use the '/osrm' proxy path
+        // Use the proxy path, not a direct IP
         routingUrl: config?.VITE_ROUTING_PROVIDER_URL || '/osrm',
     };
     const googleKey =
         config?.GOOGLE_MAPS_API_KEY || config?.VITE_GOOGLE_MAPS_API_KEY || null;
 
     const geoRuntime = new GeoRuntime(geoProviderConfig);
-
     // 4. Initialize GeoRuntime
     try {
         await geoRuntime.init(googleKey);
@@ -244,7 +242,6 @@ import '@/assets/theme.css';
 
     const router = createRouter(geoRuntime);
     const app = createApp(App);
-
     app.config.errorHandler = (err, instance, info) => console.error("[vue-error]", err, info, instance);
     window.addEventListener("error", (e) => console.error("[window-error]", e?.error || e?.message || e));
     window.addEventListener("unhandledrejection", (e) => console.error("[unhandled-rejection]", e?.reason || e));
@@ -2167,20 +2164,20 @@ export class MapGeocoderAdapter {
 // ============================================================================
 // Frontend: Update NominatimGeocodingAdapter
 // FILE: src/adapters/NominatimGeocodingAdapter.js
-// REASON: Change hardcoded default URL to use the '/nominatim' proxy path.
+// REASON: Change hardcoded default URL to use the '/nominatim/search.php' proxy path.
 // REASON: Remove hardcoded '/search' path, as it's now in the config URL.
 // ============================================================================
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 import { AddressNormalizer } from '@/services/AddressNormalizer';
 /**
  * ARCHITECTURE: NominatimGeocodingAdapter wraps OpenStreetMap Nominatim API for geocoding.
- * REFACTORED: Default URL now points to the proxy path '/nominatim/search'.
+ * REFACTORED: Default URL now points to the proxy path '/nominatim/search.php'.
  * REFACTORED: Adapter no longer appends '/search'.
  */
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
         // *** FIX: Apply defaults internally to handle null/undefined inputs ***
-        const effectiveUrl = nominatimUrl || '/nominatim/search'; // *** UPDATED DEFAULT ***
+        const effectiveUrl = nominatimUrl || '/nominatim/search.php'; // *** UPDATED DEFAULT ***
         const effectiveEmail = email || 'triage-app@example.com';
         // *** END FIX ***
 
@@ -2213,7 +2210,7 @@ export class NominatimGeocodingAdapter {
             email: this.email,
         });
 
-        // *** FIX: Removed hardcoded '/search' ***
+        // *** FIX: No longer appends '/search' ***
         const url = `${this.baseUrl}?${params.toString()}`;
         // *** END FIX ***
 
@@ -2270,219 +2267,6 @@ const log = {
     warn: (...args) => console.warn(...args),
     error: (...args) => console.error(...args),
 };
-
-================================================================================
-### PLIK: components/AddressCorrectionCard.vue
-================================================================================
-
-<template>
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
-    <div class="px-4 py-5 sm:px-6">
-      <h3 class="text-lg font-semibold leading-6 text-gray-900 dark:text-gray-100">{{ title }}</h3>
-      <p v-if="reasonCode" class="mt-1 text-sm text-red-600 dark:text-red-400">
-        Reason: {{ reasonCode }}
-      </p>
-    </div>
-
-    <div class="px-4 py-5 sm:p-6">
-      <div class="sm:hidden">
-        <label for="tabs" class="sr-only">Select a tab</label>
-        <select
-            :id="`${side}-tabs`"
-            name="tabs"
-            class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:ring-blue-500"
-            @change="currentTab = $event.target.value"
-        >
-          <option value="edit" :selected="currentTab === 'edit'">Edit</option>
-          <option value="original" :selected="currentTab === 'original'">Original (From Source)</option>
-          <option value="stored" :selected="currentTab === 'stored'" v-if="storedAddress">
-            Stored (TrackIT)
-          </option>
-        </select>
-      </div>
-      <div class="hidden sm:block">
-        <div class="border-b border-gray-200 dark:border-gray-700">
-          <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-            <button
-                @click="currentTab = 'edit'"
-                :class="[
-                currentTab === 'edit'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-500',
-                'whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium'
-              ]"
-            >
-              Edit
-            </button>
-            <button
-                @click="currentTab = 'original'"
-                :class="[
-                currentTab === 'original'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-500',
-                'whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium'
-              ]"
-            >
-              Original (From Source)
-            </button>
-            <button
-                v-if="storedAddress"
-                @click="currentTab = 'stored'"
-                :class="[
-                currentTab === 'stored'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-500',
-                'whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium'
-              ]"
-            >
-              Stored (TrackIT)
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      <div class="mt-6">
-        <div v-show="currentTab === 'edit'" class="space-y-4">
-
-          <FormInput
-              :label="`${title} Alias`"
-              :model-value="editableAddress.alias"
-              @update:model-value="emitChange('alias', $event)"
-              :id="`${side}-alias`"
-              :disabled="!isPending"
-          />
-          <FormInput
-              :label="`${title} Name (Attention)`"
-              :model-value="editableAddress.name"
-              @update:model-value="emitChange('name', $event)"
-              :id="`${side}-name`"
-              :disabled="!isPending"
-          />
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormInput
-                label="Street"
-                :model-value="editableAddress.street"
-                @update:model-value="emitChange('street', $event)"
-                :id="`${side}-street`"
-                :disabled="!isPending"
-            />
-            <FormInput
-                label="House No."
-                :model-value="editableAddress.houseNumber"
-                @update:model-value="emitChange('houseNumber', $event)"
-                :id="`${side}-houseNumber`"
-                :disabled="!isPending"
-            />
-            <FormInput
-                label="Postal Code"
-                :model-value="editableAddress.postalCode"
-                @update:model-value="emitChange('postalCode', $event)"
-                :id="`${side}-postalCode`"
-                :disabled="!isPending"
-            />
-            <FormInput
-                label="City"
-                :model-value="editableAddress.city"
-                @update:model-value="emitChange('city', $event)"
-                :id="`${side}-city`"
-                :disabled="!isPending"
-            />
-
-            <FormInput
-                label="Latitude"
-                type="number"
-                step="any"
-                :model-value="editableAddress.latitude"
-                @update:model-value="emitChange('latitude', $event ? parseFloat($event) : null)"
-                :id="`${side}-latitude`"
-                :disabled="!isPending"
-            />
-            <FormInput
-                label="Longitude"
-                type="number"
-                step="any"
-                :model-value="editableAddress.longitude"
-                @update:model-value="emitChange('longitude', $event ? parseFloat($event) : null)"
-                :id="`${side}-longitude`"
-                :disabled="!isPending"
-            />
-          </div>
-
-          <div class="pt-4 flex justify-between">
-            <button
-                @click="emit('use-original')"
-                :disabled="!isPending"
-                class="rounded-md bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-300 disabled:opacity-50"
-            >
-              Use Original
-            </button>
-
-            <div class="flex gap-2">
-              <button
-                  @click="emit('geocode')"
-                  :disabled="!isPending || geocodeLoading"
-                  class="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 disabled:opacity-50"
-              >
-                {{ geocodeLoading ? 'Geocoding...' : 'Geocode & Fill' }}
-              </button>
-
-              <button
-                  @click="emit('save')"
-                  :disabled="!isPending"
-                  class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
-              >
-                Save {{ title }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-show="currentTab === 'original'">
-          <AddressDisplay :address="originalAddress" title="Original Address" :show-coords="true" />
-        </div>
-
-        <div v-show="currentTab === 'stored'" v-if="storedAddress">
-          <AddressDisplay :address="storedAddress" title="Stored Address (TrackIT)" :show-coords="true" />
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, defineProps, defineEmits } from 'vue';
-import AddressDisplay from '@/components/AddressDisplay.vue';
-import FormInput from '@/components/FormInput.vue';
-// Note: AddressInputGroup is removed and fields are now in this component
-
-const props = defineProps({
-  title: { type: String, required: true },
-  side: { type: String, required: true },
-  originalAddress: { type: Object, default: () => ({}) },
-  storedAddress: { type: Object, default: undefined },
-  reasonCode: { type: String, default: '' },
-  isPending: { type: Boolean, default: false },
-  editableAddress: { type: Object, required: true }, // Expects full Address object from WorkbenchModels
-  geocodeLoading: { type: Boolean, default: false }
-});
-
-const emit = defineEmits([
-  'update:editableAddress',
-  'geocode',
-  'save',
-  'use-original'
-]);
-
-const currentTab = ref('edit');
-
-const emitChange = (field, value) => {
-  emit('update:editableAddress', {
-    ...props.editableAddress,
-    [field]: value
-  });
-};
-</script>
 
 ================================================================================
 ### PLIK: components/AddressDiffCard.vue
@@ -3812,50 +3596,6 @@ const submitCorrection = async () => {
 };
 
 onUnmounted(stopPolling);
-</script>
-
-================================================================================
-### PLIK: components/FormInput.vue
-================================================================================
-
-<template>
-  <div>
-    <label :for="id" class="block text-sm font-medium leading-6 text-gray-900 dark:text-gray-100">{{ label }}</label>
-    <div class="mt-2">
-      <input
-          :type="type"
-          :name="id"
-          :id="id"
-          :value="modelValue"
-          @input="$emit('update:modelValue', $event.target.value)"
-          :disabled="disabled"
-          :step="step"
-          class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-gray-100 dark:ring-gray-600 dark:focus:ring-blue-500"
-          :class="{ 'disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-700/50': disabled }"
-      />
-    </div>
-  </div>
-</template>
-
-<script setup>
-defineProps({
-  modelValue: [String, Number],
-  label: String,
-  id: String,
-  type: {
-    type: String,
-    default: 'text'
-  },
-  disabled: {
-    type: Boolean,
-    default: false
-  },
-  step: {
-    type: String,
-    default: 'any'
-  }
-});
-defineEmits(['update:modelValue']);
 </script>
 
 ================================================================================
@@ -6123,13 +5863,16 @@ export class EditorDiffController {
 // ============================================================================
 // Frontend: Update EditorFacade.js
 // FILE: src/controllers/EditorFacade.js
-// REASON: Draw markers and route on load. Pass 'side' to preview controller.
+// REASON: Draw markers and route on load.
+//         Pass 'side' to preview controller.
+// REASON (NEW): Add geocode-on-load logic if coordinates are missing.
 // ============================================================================
 /**
  * ARCHITECTURE: EditorFacade wraps CorrectionEditorController and adds map preview conveniences.
  * It follows the manifesto by exposing intent methods used by the Editor view without leaking internals.
  * REFACTORED:
  * - 'load' now draws both markers and the OSRM route on success.
+ * - 'load' now automatically geocodes pickup/delivery if coordinates are missing.
  * - 'accept...Suggestion' methods now pass the correct 'side' to the previewer.
  */
 import { Result } from "@/domain/Result";
@@ -6144,17 +5887,43 @@ export class EditorFacade {
 
   async load(orderId) {
     const loadResult = await this.ctrl.loadOrder(orderId);
+    if (!loadResult.ok) {
+      return loadResult;
+    }
+
+    // --- NEW: Geocode on load if coordinates are missing ---
+    let snap = this.ctrl.snapshot();
+    let geocodeNeeded = false;
+
+    const p = snap.editor?.editedPickup;
+    if (p && (p.latitude == null || p.longitude == null)) {
+      log.info(`[EditorFacade] Pickup (Barcode: ${snap.editor?.detail?.barcode}) missing coordinates. Geocoding on load.`);
+      await this.ctrl.geocodeEdited("pickup");
+      geocodeNeeded = true;
+    }
+
+    const d = snap.editor?.editedDelivery;
+    if (d && (d.latitude == null || d.longitude == null)) {
+      log.info(`[EditorFacade] Delivery (Barcode: ${snap.editor?.detail?.barcode}) missing coordinates. Geocoding on load.`);
+      await this.ctrl.geocodeEdited("delivery");
+      geocodeNeeded = true;
+    }
+
+    if (geocodeNeeded) {
+      snap = this.ctrl.snapshot(); // Refresh snapshot after geocoding
+    }
+    // --- END NEW ---
+
 
     // --- NEW: Draw markers and route on load ---
-    if (loadResult.ok && this.preview) {
+    if (this.preview) {
       try {
-        const snap = this.ctrl.snapshot();
-        // Use editedPickup/Delivery which are initialized from the originals
-        if (snap.editedPickup && snap.editedDelivery) {
+        // Use editedPickup/Delivery which are initialized from the originals (and now geocoded)
+        if (snap.editor.editedPickup && snap.editor.editedDelivery) {
           log.info("[EditorFacade] Loading complete. Drawing initial markers and route.");
           await this.preview.policy.showAndFitRoute(
-              snap.editedPickup,
-              snap.editedDelivery
+              snap.editor.editedPickup,
+              snap.editor.editedDelivery
           );
         }
       } catch (e) {
@@ -6192,14 +5961,14 @@ export class EditorFacade {
   acceptPickupSuggestion(i = 0) {
     const r = this.ctrl.acceptSuggestion("pickup", i);
     // --- UPDATED: Pass side to previewer ---
-    if (this.preview && r.ok) this.preview.show("pickup", this.ctrl.snapshot().editedPickup);
+    if (this.preview && r.ok) this.preview.show("pickup", this.ctrl.snapshot().editor.editedPickup);
     return r.ok ? Result.ok(true) : r;
   }
 
   acceptDeliverySuggestion(i = 0) {
     const r = this.ctrl.acceptSuggestion("delivery", i);
     // --- UPDATED: Pass side to previewer ---
-    if (this.preview && r.ok) this.preview.show("delivery", this.ctrl.snapshot().editedDelivery);
+    if (this.preview && r.ok) this.preview.show("delivery", this.ctrl.snapshot().editor.editedDelivery);
     return r.ok ? Result.ok(true) : r;
   }
 
@@ -6224,8 +5993,7 @@ export class EditorFacade {
 
     // Now focus the map on the newly geocoded point
     const snap = this.ctrl.snapshot();
-    const addr = (side === 'pickup') ? snap.editedPickup : snap.editedDelivery;
-
+    const addr = (side === 'pickup') ? snap.editor.editedPickup : snap.editor.editedDelivery;
     if (this.preview) {
       await this.preview.policy.focusAddress(side, addr);
     }
@@ -6243,11 +6011,11 @@ export class EditorFacade {
     }
     try {
       const snap = this.ctrl.snapshot();
-      if (snap.editedPickup && snap.editedDelivery) {
+      if (snap.editor.editedPickup && snap.editor.editedDelivery) {
         log.info("[EditorFacade] Refreshing map route.");
         await this.preview.policy.showAndFitRoute(
-            snap.editedPickup,
-            snap.editedDelivery
+            snap.editor.editedPickup,
+            snap.editor.editedDelivery
         );
         return Result.ok(true);
       } else {
@@ -6958,6 +6726,8 @@ export class IdempotentSaveController {
 // Frontend: Update IntegrationOrchestrator (Final Version)
 // FILE: src/controllers/IntegrationOrchestrator.js
 // REASON: Instantiate GeocodeWithCacheController correctly.
+// REASON (NEW): Fix getEditor logic to correctly create/update
+//               SuggestionPreviewController when mapController is provided.
 // ============================================================================
 // FILE: src/controllers/IntegrationOrchestrator.js
 import { OrdersQueueService } from "@/services/OrdersQueueService";
@@ -6968,12 +6738,15 @@ import { CorrectionEditorController } from "@/controllers/CorrectionEditorContro
 import { EditorFacade } from "@/controllers/EditorFacade";
 // Import GeocodeWithCacheController
 import { GeocodeWithCacheController } from "@/controllers/GeocodeWithCacheController";
+// *** ADDED IMPORT ***
+import { SuggestionPreviewController } from "@/controllers/SuggestionPreviewController";
 
 /**
  * ARCHITECTURE: Central factory/provider for core application controllers and services.
  * Injects dependencies like GeoRuntime and MapController to construct facades.
  * REFACTORED: Requests adapters from GeoRuntime without specifying provider type.
  * FIX: Instantiates GeocodeWithCacheController here to pass to EditorFacade.
+ * FIX: getEditor now correctly creates/updates SuggestionPreviewController.
  */
 export class IntegrationOrchestrator {
   constructor(geoRuntime, mapController) { // mapController might be null initially
@@ -6986,7 +6759,6 @@ export class IntegrationOrchestrator {
     this.polling = new PollingService();
     this._worklist = null;
     this._editor = null;
-
     // Instantiate shared GeocodeWithCacheController using the provided GeoRuntime
     // This assumes GeoRuntime.init() will be called before geocodeController.geocode() is needed.
     this._geocodeController = new GeocodeWithCacheController(this._geoRuntime);
@@ -7002,10 +6774,19 @@ export class IntegrationOrchestrator {
   getEditor(mapControllerInstance = null) { // Allow passing map controller if created later
     // If an editor instance already exists, return it
     if (this._editor) {
+      // *** FIX ***
       // If a new map controller is provided (e.g., editor view re-created), update it
-      if (mapControllerInstance && this._editor.preview) {
-        this._editor.preview.map = mapControllerInstance; // Update the map controller in the preview helper
+      if (mapControllerInstance) {
+        if (this._editor.preview) {
+          // If preview controller exists, just update its map controller
+          this._editor.preview.map = mapControllerInstance;
+          this._editor.preview.policy.map = mapControllerInstance; // Also update the policy's map
+        } else {
+          // If preview is null (was initted with null), create it now
+          this._editor.preview = new SuggestionPreviewController(mapControllerInstance);
+        }
       }
+      // *** END FIX ***
       return this._editor;
     }
 
@@ -7030,7 +6811,6 @@ export class IntegrationOrchestrator {
 
     // Instantiate CorrectionEditorController, passing the shared GeocodeWithCacheController
     const ctrl = new CorrectionEditorController(this.api, this._geocodeController);
-
     // Instantiate EditorFacade, passing the relevant components
     this._editor = new EditorFacade(
         ctrl,
@@ -7039,6 +6819,13 @@ export class IntegrationOrchestrator {
         this.queue              // Pass the orders queue
     );
     return this._editor;
+  }
+
+  // *** THIS IS THE FUNCTION THAT WAS CAUSING THE ERROR ***
+  // It was missing from your file. I am adding it based on the name
+  // in CorrectionEditorView.vue
+  createPreviewController(mapController) {
+    return new SuggestionPreviewController(mapController);
   }
 }
 
@@ -8806,113 +8593,133 @@ const handleChangePassword = () => {
 ================================================================================
 
 <template>
-  <div class="p-4 sm:p-6 lg:p-8">
-    <div v-if="state.loading" class="text-center">
+  <div class="correction-editor-view">
+    <div v-if="state.loading" class="loading-indicator">
       <p>Loading order details...</p>
     </div>
-    <div v-else-if="state.error" class="text-red-500 text-center">
+    <div v-else-if="state.error" class="error-message">
       <p>
         Failed to load order details: {{ state.error }}
         <span v-if="orderId"> (ID: {{ orderId }})</span>
       </p>
     </div>
 
-    <div v-else-if="state.detail" class="space-y-8">
-      <PageHeader
-          :title="`Correction Editor (Barcode: ${state.detail.barcode})`"
-          :subtitle="`Source: ${state.detail.sourceSystem} | Status: ${state.detail.processingStatus}`"
-      />
+    <div v-else-if="state.detail" class="editor-layout">
+      <header class="editor-header card">
+        <h2>
+          Correction Editor (Barcode: {{ state.detail.barcode }})
+        </h2>
+        <p>
+          Source: {{ state.detail.sourceSystem }} | Status: {{ state.detail.processingStatus }}
+        </p>
+      </header>
 
-      <div class="mt-8" style="min-height: 400px">
-        <div ref="mapContainer" style="height: 400px; width: 100%; border-radius: 8px"></div>
-        <div v-if="routeInfo" class="mt-4 text-center text-gray-700 dark:text-gray-200">
-          <p>
-            <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-            <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-          </p>
+      <div class="editor-map card">
+        <div ref="mapContainer" class="map-container-element"></div>
+        <div v-if="routeInfo" class="route-info">
+          <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+          <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AddressCorrectionCard
-            title="Pickup Address"
-            side="pickup"
-            :original-address="state.detail.originalPickup"
-            :stored-address="state.detail.pickupStoredAddress"
-            :reason-code="state.detail.pickupReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedPickup"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('pickup', $event)"
-            @geocode="handleGeocode('pickup')"
-            @save="handleSave('pickup')"
-            @use-original="handleUseOriginal('pickup')"
-        />
+      <div class="editor-columns">
 
-        <AddressCorrectionCard
-            title="Delivery Address"
-            side="delivery"
-            :original-address="state.detail.originalDelivery"
-            :stored-address="state.detail.deliveryStoredAddress"
-            :reason-code="state.detail.deliveryReasonCode"
-            :is-pending="isPending"
-            :editable-address="state.editedDelivery"
-            :geocode-loading="state.geocodeLoading"
-            @update:editableAddress="updateAddress('delivery', $event)"
-            @geocode="handleGeocode('delivery')"
-            @save="handleSave('delivery')"
-            @use-original="handleUseOriginal('delivery')"
-        />
+        <div class="address-column card">
+          <AddressDisplay
+              title="Original Pickup"
+              :address="state.detail.originalPickup"
+              :alias="state.detail.originalPickup.alias"
+          />
+          <SuggestionList
+              title="Pickup Suggestions"
+              :suggestions="state.detail.suggestedPickup"
+              @accept="handleAcceptSuggestion('pickup', $event)"
+          />
+          <AddressForm
+              side="pickup"
+              :initialAddress="state.editedPickup"
+              :placesAdapter="placesAdapter"
+              @update="handleFormUpdate"
+          />
+          <div class="column-actions">
+            <button @click="handleUseOriginal('pickup')" class="button secondary">Use Original</button>
+            <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button">
+              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+            </button>
+            <button @click="handleSave('pickup')" :disabled="state.saveLoading" class="button">
+              {{ state.saveLoading ? 'Saving...' : 'Save & Next (Pickup)' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="address-column card">
+          <AddressDisplay
+              title="Original Delivery"
+              :address="state.detail.originalDelivery"
+              :alias="state.detail.originalDelivery.alias"
+          />
+          <SuggestionList
+              title="Delivery Suggestions"
+              :suggestions="state.detail.suggestedDelivery"
+              @accept="handleAcceptSuggestion('delivery', $event)"
+          />
+          <AddressForm
+              side="delivery"
+              :initialAddress="state.editedDelivery"
+              :placesAdapter="placesAdapter"
+              @update="handleFormUpdate"
+          />
+          <div class="column-actions">
+            <button @click="handleUseOriginal('delivery')" class="button secondary">Use Original</button>
+            <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button">
+              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+            </button>
+            <button @click="handleSave('delivery')" :disabled="state.saveLoading" class="button">
+              {{ state.saveLoading ? 'Saving...' : 'Save & Next (Delivery)' }}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div
-          v-if="isPending"
-          class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4"
-      >
-        <div class="flex items-center">
+      <div class="editor-footer card" v-if="isPending">
+        <div class="bulk-toggle">
           <input
               id="applyToSimilar"
               type="checkbox"
               v-model="applyToSimilar"
-              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          <label for="applyToSimilar" class="ml-2 block text-sm text-gray-900 dark:text-gray-100"
-          >Apply this correction to all similar pending errors</label
-          >
+          <label for="applyToSimilar">Apply this correction to all similar pending errors</label>
         </div>
-
-        <div class="flex items-center space-x-2">
-          <button
-              @click="handleSave('both')"
-              :disabled="state.saveLoading"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
-          >
-            {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
-          </button>
-        </div>
+        <button @click="handleSave('both')" :disabled="state.saveLoading" class="button">
+          {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
+        </button>
       </div>
-      <div v-else class="mt-8 p-4 bg-white dark:bg-gray-800 shadow rounded-lg text-center">
-        <p class="font-semibold text-gray-700 dark:text-gray-200">
+      <div v-else class="editor-footer card">
+        <p>
           This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
           {{ state.detail.processingStatus }})
         </p>
       </div>
+
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast.js';
-import PageHeader from '@/components/PageHeader.vue';
-import AddressCorrectionCard from '@/components/AddressCorrectionCard.vue';
+
+// Import classic components
+import AddressDisplay from '@/components/AddressDisplay.vue';
+import AddressForm from '@/components/AddressForm.vue';
+import SuggestionList from '@/components/SuggestionList.vue';
 
 // Import Manifesto architecture controllers
 import { MapController } from "@/controllers/MapController.js";
 import { EditorFacade } from "@/controllers/EditorFacade.js";
 import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
+// import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js"; // DEPRECATED
 import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
 import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
 import { Address } from '@/domain/WorkbenchModels.js';
@@ -8920,7 +8727,6 @@ import { Address } from '@/domain/WorkbenchModels.js';
 // === Injections ===
 const orchestrator = inject("orchestrator");
 const geoRuntime = inject("geoRuntime");
-const showNotification = inject("showNotification");
 const toast = useToast();
 
 // === Route & Store ===
@@ -8942,6 +8748,7 @@ const state = reactive({
 const applyToSimilar = ref(false);
 const routeInfo = ref(null);
 const mapContainer = ref(null); // DOM ref for map
+const placesAdapter = ref(null); // To pass to AddressForm
 
 // === Controller Setup ===
 let mapController = null;
@@ -8964,10 +8771,22 @@ onMounted(async () => {
   // 1. Initialize Editor Facade (mapController is null for now)
   editorFacade = orchestrator.getEditor(null);
 
+  // 1b. Get the places adapter (if it exists) for AddressForm
+  try {
+    placesAdapter.value = geoRuntime.placesAdapter();
+  } catch(e) {
+    log.error("Could not get places adapter for AddressForm", e);
+    placesAdapter.value = null;
+  }
+
+
   // 2. Initialize Save Controllers
-  const saveController = new IdempotentSaveController();
-  saveFlow = new SaveFlowController(editorFacade, worklistStore, saveController);
+  // *** FIX for DEPRECATED WARNING ***
+  // The deprecated IdempotentSaveController is no longer instantiated.
+  // SaveFlowController defaults to using AddressExceptionApi internally.
+  saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
+  // *** END FIX ***
 
   // 3. Load Order Data (this will trigger the 'watch' block to init the map)
   await loadOrderData();
@@ -8981,25 +8800,20 @@ onUnmounted(() => {
   }
 });
 
-// *** FIX: Use a watch to initialize the map ***
-// This watch fires when the 'mapContainer' ref changes.
-// 1. On load, it's null.
-// 2. After loadOrderData() sets state.detail, Vue renders the <div>.
-// 3. Vue attaches the <div> to the ref, so mapContainer.value becomes non-null.
-// 4. This 'watch' block fires, and we can safely initialize the map.
 watch(mapContainer, async (newMapEl) => {
-  if (newMapEl && !mapController) { // Only init if we have the element AND map isn't already initted
+  if (newMapEl && !mapController) {
     log.info("Map container is now in DOM. Initializing MapController...");
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
       await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
 
-      // Inject the map into the facade
-      editorFacade.preview = orchestrator.createPreviewController(mapController);
+      // Inject the new mapController into the existing facade
+      editorFacade = orchestrator.getEditor(mapController);
+
       log.info("MapController initialized and injected into facade.");
 
-      // Now draw the initial route
+      // Now draw the initial route (data is already loaded and geocoded)
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -9008,7 +8822,6 @@ watch(mapContainer, async (newMapEl) => {
         log.info("Initial route and markers drawn.");
       }
 
-      // And fetch route stats
       await refreshRouteInfo();
 
     } catch (err) {
@@ -9016,7 +8829,6 @@ watch(mapContainer, async (newMapEl) => {
       toast.error("Failed to load map: " + err.message, 10000);
     }
   } else if (!newMapEl && mapController) {
-    // This happens on unmount/reload
     log.info("Map container removed. Destroying map controller.");
     await mapController.destroy();
     mapController = null;
@@ -9029,22 +8841,19 @@ async function loadOrderData() {
   state.loading = true;
   state.error = null;
 
-  // Destroy the old map controller IF it exists
-  // This sets mapContainer.value to null (when v-if hides it), triggering the watch's cleanup
   if (mapController) {
     await mapController.destroy();
     mapController = null;
     if (editorFacade) editorFacade.preview = null;
   }
 
-  // Set detail to null to hide the old view and unmount the mapContainer ref
   state.detail = null;
 
+  // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
 
   if (result.ok) {
     const snap = editorFacade.snapshot().editor;
-    // Setting these will trigger the v-else-if and THEN the mapContainer watch
     state.detail = snap.detail;
     state.editedPickup = snap.editedPickup;
     state.editedDelivery = snap.editedDelivery;
@@ -9055,7 +8864,6 @@ async function loadOrderData() {
   state.loading = false;
 }
 
-// Fetches route stats from OSRM (via proxy)
 async function refreshRouteInfo() {
   if (!geoRuntime || !geoRuntime._config.routingUrl) {
     log.warn("Cannot refresh route info: No routingUrl in geoRuntime.");
@@ -9064,7 +8872,6 @@ async function refreshRouteInfo() {
 
   const p = state.editedPickup;
   const d = state.editedDelivery;
-
   if (!p?.longitude || !p?.latitude || !d?.longitude || !d?.latitude) {
     routeInfo.value = null;
     return;
@@ -9074,7 +8881,7 @@ async function refreshRouteInfo() {
   const url = `${geoRuntime._config.routingUrl}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
 
   try {
-    const response = await fetch(url); // Use fetch, as it's not an API call
+    const response = await fetch(url);
     if (!response.ok) throw new Error(`OSRM responded with ${response.status}`);
     const data = await response.json();
     if (data && data.code === 'Ok' && data.routes && data.routes.length > 0) {
@@ -9092,15 +8899,19 @@ async function refreshRouteInfo() {
   }
 }
 
-// Update local state and facade state
-function updateAddress(side, newAddressObject) {
+// Handle updates from AddressForm.vue
+function handleFormUpdate(side, field, value) {
+  const target = side === 'pickup' ? state.editedPickup : state.editedDelivery;
+  const newAddress = new Address({ ...target, [field]: value });
+
   if (side === 'pickup') {
-    state.editedPickup = newAddressObject;
-    editorFacade.setManualPickup(newAddressObject);
+    state.editedPickup = newAddress;
+    editorFacade.setManualPickup(newAddress);
   } else {
-    state.editedDelivery = newAddressObject;
-    editorFacade.setManualDelivery(newAddressObject);
+    state.editedDelivery = newAddress;
+    editorFacade.setManualDelivery(newAddress);
   }
+
   // After manual edit, refresh route
   refreshRouteInfo();
   if (mapController) {
@@ -9108,11 +8919,28 @@ function updateAddress(side, newAddressObject) {
   }
 }
 
+// Handle accepting from SuggestionList.vue
+function handleAcceptSuggestion(side, suggestionIndex) {
+  if (side === 'pickup') {
+    commandBus.acceptPickup(suggestionIndex);
+  } else {
+    commandBus.acceptDelivery(suggestionIndex);
+  }
+  // Update local state from facade
+  const snap = editorFacade.snapshot().editor;
+  state.editedPickup = snap.editedPickup;
+  state.editedDelivery = snap.editedDelivery;
+
+  editorFacade.refreshRoute();
+  refreshRouteInfo();
+  toast.info(`Suggestion applied to ${side} address.`, 2000);
+}
+
+
 async function handleGeocode(side) {
   state.geocodeLoading = true;
   toast.info(`Geocoding ${side} address...`, 2000);
 
-  // This uses the Manifesto stack (GeoRuntime -> NominatimAdapter)
   const result = await editorFacade.geocodeAndFocus(side);
 
   if (result.ok) {
@@ -9151,7 +8979,6 @@ function handleUseOriginal(side) {
 async function handleSave(side) {
   state.saveLoading = true;
   let result;
-
   try {
     if (side === 'pickup') {
       toast.info("Saving pickup and fetching next order...", 3000);
@@ -9193,6 +9020,9 @@ const log = {
   error: (...args) => console.error(...args),
 };
 </script>
+
+<style scoped>
+/* STYLING REST
 
 ================================================================================
 ### PLIK: views/DashboardView.vue

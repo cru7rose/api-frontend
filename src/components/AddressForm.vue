@@ -1,21 +1,24 @@
 <template>
-  <div class="address-form">
-    <h3>Edit {{ sideLabel }}</h3>
-    <div class="form-group alias-group">
-      <label :for="`${side}-alias`">Alias</label>
+  <div class="address-form p-4">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
+    <div class="form-group mb-3">
+
+      <label :for="`${side}-alias`" class="block text-xs font-medium text-gray-600 mb-1">Alias</label>
       <input
           :id="`${side}-alias`"
           type="text"
           :value="addressModelValue?.alias"
           @input="emitUpdate('alias', $event.target.value)"
+          class="form-input"
           readonly
           disabled
       />
     </div>
 
-    <div class="form-grid">
-      <div class="form-group suggestion-group">
-        <label :for="`${side}-street`">Street</label>
+    <div class="form-grid grid grid-cols-2 gap-x-4 gap-y-3">
+      <div class="form-group suggestion-group col-span-2">
+
+        <label :for="`${side}-street`" class="block text-xs font-medium text-gray-600 mb-1">Street</label>
         <input
             :id="`${side}-street`"
             type="text"
@@ -23,37 +26,43 @@
             @input="handleInput('street', $event.target.value)"
             @focus="handleFocus('street')"
             @blur="hideSuggestions"
-            @keydown="handleKeydown"
+
             autocomplete="off"
+            class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'street'" class="suggestions-dropdown" ref="streetSuggestionsRef">
-          <li v-if="suggestionsLoading" class="loading-item">Loading...</li>
-          <li v-else-if="suggestionsError" class="error-item">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="no-results-item">No suggestions found.</li>
+          <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
+          <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
           <li
-              v-for="(suggestion, index) in suggestions"
+              v-for="(suggestion, index) in
+suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
+              class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
           </li>
+
         </ul>
       </div>
 
-      <div class="form-group">
-        <label :for="`${side}-houseNumber`">House No.</label>
+      <div class="form-group col-span-1">
+        <label :for="`${side}-houseNumber`" class="block text-xs font-medium text-gray-600 mb-1">House No.</label>
         <input
             :id="`${side}-houseNumber`"
             type="text"
             :value="addressModelValue?.houseNumber"
             @input="emitUpdate('houseNumber', $event.target.value)"
+            class="form-input"
         />
       </div>
 
-      <div class="form-group suggestion-group">
-        <label :for="`${side}-postalCode`">Postal Code</label>
+
+      <div class="form-group suggestion-group col-span-1">
+        <label :for="`${side}-postalCode`" class="block text-xs font-medium text-gray-600 mb-1">Postal Code</label>
         <input
             :id="`${side}-postalCode`"
             type="text"
@@ -61,83 +70,100 @@
             @input="handleInput('postalCode', $event.target.value)"
             @focus="handleFocus('postalCode')"
             @blur="hideSuggestions"
+
             @keydown="handleKeydown"
             autocomplete="off"
+            class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'postalCode'" class="suggestions-dropdown" ref="postalSuggestionsRef">
-          <li v-if="suggestionsLoading" class="loading-item">Loading...</li>
-          <li v-else-if="suggestionsError" class="error-item">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="no-results-item">No suggestions found.</li>
+          <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
+          <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
           <li
+
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
+              class="suggestion-item"
           >
-            {{ formatSuggestion(suggestion) }}
+            {{
+              formatSuggestion(suggestion) }}
           </li>
         </ul>
       </div>
 
-      <div class="form-group suggestion-group">
-        <label :for="`${side}-city`">City</label>
+      <div class="form-group suggestion-group col-span-2">
+        <label :for="`${side}-city`" class="block text-xs font-medium text-gray-600 mb-1">City</label>
         <input
             :id="`${side}-city`"
             type="text"
             :value="addressModelValue?.city"
             @input="handleInput('city', $event.target.value)"
+
             @focus="handleFocus('city')"
             @blur="hideSuggestions"
             @keydown="handleKeydown"
             autocomplete="off"
+            class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'city'" class="suggestions-dropdown" ref="citySuggestionsRef">
-          <li v-if="suggestionsLoading" class="loading-item">Loading...</li>
-          <li v-else-if="suggestionsError" class="error-item">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="no-results-item">No suggestions found.</li>
+          <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
+          <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
+
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
           <li
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
+
               @mouseenter="activeSuggestionIndex = index"
+              class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
           </li>
         </ul>
       </div>
 
-      <div class="form-group">
-        <label :for="`${side}-country`">Country</label>
+      <div class="form-group col-span-2">
+        <label :for="`${side}-country`" class="block text-xs font-medium text-gray-600 mb-1">Country</label>
         <input
             :id="`${side}-country`"
             type="text"
+
             :value="addressModelValue?.country"
             @input="emitUpdate('country', $event.target.value)"
             maxlength="2"
+            class="form-input"
         />
       </div>
 
-      <div class="form-group coords">
-        <label :for="`${side}-latitude`">Latitude</label>
+      <div class="form-group coords col-span-1">
+        <label :for="`${side}-latitude`" class="block text-xs font-medium text-gray-600 mb-1">Latitude</label>
         <input
             :id="`${side}-latitude`"
             type="number"
+
             step="any"
             :value="addressModelValue?.latitude"
-            @input="emitUpdate('latitude', $event.target.value ? parseFloat($event.target.value) : null)"
+            @input="emitUpdate('latitude', $event.target.value ?
+parseFloat($event.target.value) : null)"
+            class="form-input"
         />
       </div>
 
-      <div class="form-group coords">
-        <label :for="`${side}-longitude`">Longitude</label>
+      <div class="form-group coords col-span-1">
+        <label :for="`${side}-longitude`" class="block text-xs font-medium text-gray-600 mb-1">Longitude</label>
         <input
             :id="`${side}-longitude`"
             type="number"
             step="any"
             :value="addressModelValue?.longitude"
+
             @input="emitUpdate('longitude', $event.target.value ? parseFloat($event.target.value) : null)"
+            class="form-input"
         />
       </div>
     </div>
@@ -158,6 +184,7 @@ const props = defineProps({
     type: Object,
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
+
   placesAdapter: {
     type: Object,
     default: null,
@@ -165,7 +192,6 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update']);
-
 // --- State ---
 const suggestions = ref([]);
 const showSuggestions = ref(false);
@@ -177,7 +203,8 @@ const activeSuggestionSource = ref('none'); // 'google' or 'backend'
 
 const api = new AddressExceptionApi();
 const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-const backendDebouncer = new DebounceTimer(300); // Debounce for backend API calls
+const backendDebouncer = new DebounceTimer(300);
+// Debounce for backend API calls
 
 const addressModelValue = computed(() => props.initialAddress);
 const sideLabel = computed(() => props.side.charAt(0).toUpperCase() + props.side.slice(1));
@@ -188,7 +215,6 @@ watch(() => props.placesAdapter, (newAdapter) => {
   localPlacesAdapter.value = newAdapter;
   if(newAdapter) console.log(`Google Places Adapter received in AddressForm (${props.side}).`);
 });
-
 // --- Suggestion Fetching Logic ---
 
 const fetchGoogleSuggestions = async (field, value) => {
@@ -207,7 +233,8 @@ const fetchGoogleSuggestions = async (field, value) => {
 
   try {
     const query = value;
-    const countryCode = addressModelValue.value?.country || 'PL';
+    const countryCode = addressModelValue.value?.country ||
+        'PL';
     const results = await localPlacesAdapter.value.suggest(query, countryCode);
     suggestions.value = results || [];
   } catch (e) {
@@ -218,43 +245,46 @@ const fetchGoogleSuggestions = async (field, value) => {
     suggestionsLoading.value = false;
   }
 };
-
 const fetchBackendSuggestions = async (field) => {
   // Only proceed if Google is not currently active
   if (activeSuggestionSource.value === 'google' && suggestions.value.length > 0) return;
-
   activeSuggestionSource.value = 'backend';
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   suggestionsLoading.value = true;
   suggestionsError.value = null;
-  showSuggestions.value = true; // Show dropdown
+  showSuggestions.value = true;
+// Show dropdown
   suggestions.value = []; // Clear previous
 
   let result;
   let contextMissing = false;
-
   try {
     const addr = addressModelValue.value;
     if (field === 'street') {
-      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first."; contextMissing = true; }
+      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first.";
+        contextMissing = true; }
       else result = await api.getStreetsForPostalCode(addr.postalCode, addr.city);
     } else if (field === 'postalCode') {
-      if (!addr?.street || !addr?.city) { suggestionsError.value = "Enter Street and City first."; contextMissing = true; }
+      if (!addr?.street || !addr?.city) { suggestionsError.value = "Enter Street and City first.";
+        contextMissing = true; }
       else result = await api.getPostalCodesForStreet(addr.street, addr.city);
     } else if (field === 'city') {
-      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first."; contextMissing = true; }
+      if (!addr?.postalCode) { suggestionsError.value = "Enter Postal Code first.";
+        contextMissing = true; }
       else result = await api.getCitiesForPostalCode(addr.postalCode);
     } else {
-      contextMissing = true; // Not a field we fetch for
+      contextMissing = true;
+// Not a field we fetch for
     }
 
     if (contextMissing) {
       suggestions.value = [];
-      // Do not show "no results" if context was missing
+// Do not show "no results" if context was missing
       if (!suggestionsError.value) showSuggestions.value = false;
     } else if (result && result.ok) {
-      suggestions.value = result.value; // Expecting AddressLookupSuggestionDTO[]
+      suggestions.value = result.value;
+// Expecting AddressLookupSuggestionDTO[]
     } else if (result) {
       suggestionsError.value = result.error.message;
     }
@@ -265,17 +295,14 @@ const fetchBackendSuggestions = async (field) => {
     suggestionsLoading.value = false;
   }
 };
-
 // --- Event Handlers ---
 
 const emitUpdate = (field, value) => {
   emit('update', props.side, field, value);
 };
-
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-
-  // Trigger Google Places (debounced) as primary suggestion source on type
+// Trigger Google Places (debounced) as primary suggestion source on type
   if (field === 'street' || field === 'city' || field === 'postalCode') {
     placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
   } else {
@@ -285,14 +312,14 @@ const handleInput = (field, value) => {
     backendDebouncer.cancel();
   }
 };
-
 const handleFocus = (field) => {
   // Hide any other open dropdowns
   hideSuggestions();
-  // Set active field for keyboard nav and context
+// Set active field for keyboard nav and context
   activeField.value = field;
   activeSuggestionIndex.value = -1;
-  activeSuggestionSource.value = 'none'; // Reset source
+  activeSuggestionSource.value = 'none';
+// Reset source
 
   // Trigger backend suggestions (debounced) on focus
   if (field === 'street' || field === 'postalCode' || field === 'city') {
@@ -307,7 +334,6 @@ const selectSuggestion = (suggestion) => {
   if (!suggestion) return;
 
   const source = activeSuggestionSource.value;
-
   if (source === 'google') {
     // Google suggestion selected (full object)
     emitUpdate('street', suggestion.street || addressModelValue.value.street || '');
@@ -323,7 +349,8 @@ const selectSuggestion = (suggestion) => {
     }
   } else if (source === 'backend') {
     // Backend suggestion selected (AddressLookupSuggestionDTO)
-    const field = activeField.value; // Field that was focused
+    const field = activeField.value;
+// Field that was focused
     emitUpdate(field, suggestion.value);
     if (suggestion.latitude != null) emitUpdate('latitude', suggestion.latitude);
     if (suggestion.longitude != null) emitUpdate('longitude', suggestion.longitude);
@@ -352,7 +379,8 @@ const hideSuggestions = () => {
     activeSuggestionIndex.value = -1;
     suggestions.value = [];
     suggestionsError.value = null;
-  }, 150); // Delay closing dropdown
+  }, 150);
+// Delay closing dropdown
 };
 
 const formatSuggestion = (s) => {
@@ -365,7 +393,6 @@ const formatSuggestion = (s) => {
   // Backend suggestion (AddressLookupSuggestionDTO)
   return s.value;
 };
-
 // --- Keyboard Navigation ---
 const handleKeydown = (event) => {
   if (!showSuggestions.value) return;
@@ -389,7 +416,6 @@ const handleKeydown = (event) => {
     hideSuggestions();
   }
 };
-
 onUnmounted(() => {
   placesDebouncer.cancel();
   backendDebouncer.cancel();
@@ -397,126 +423,81 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.address-form {
-  margin-top: 15px;
+/* Modern Form Input Styling */
+.form-input {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem; /* 8px 12px */
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem; /* 20px */
+  color: #1f2937; /* gray-800 */
+  background-color: #ffffff;
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.375rem; /* 6px */
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.form-grid {
-  display: grid;
-  /* Flexible columns, min 200px, max 1fr */
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px 18px; /* Increased gap */
+
+.form-input:focus {
+  z-index: 11;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(0, 90, 156, 0.25);
+  outline: none;
 }
-/* Style the alias field separately */
-.alias-group {
-  /* Span full width */
-  grid-column: 1 / -1;
-}
-.alias-group input {
-  background-color: #f4f4f4; /* Disabled appearance */
-  color: #333;
-  font-weight: bold;
+
+.form-input:disabled {
+  background-color: #f3f4f6; /* gray-100 */
+  color: #6b7280; /* gray-500 */
   cursor: not-allowed;
 }
 
 .form-group {
-  display: flex;
-  flex-direction: column;
   position: relative;
 }
-.form-group label {
-  margin-bottom: 5px;
-  font-size: 0.9em;
-  color: #333;
-  font-weight: 600;
-}
-.form-group input {
-  padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1em;
-  position: relative;
-  z-index: 2;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.form-group input:focus {
-  z-index: 11;
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0,123,255,.25);
-  outline: none;
-}
 
-.form-group.coords input {
-  font-size: 0.9em;
-  color: #495057;
-}
-
-/* Suggestions Dropdown */
+/* Suggestions Dropdown Styling */
 .suggestions-dropdown {
-  position: absolute;
-  top: 100%; /* Position below the input */
-  left: 0;
-  right: 0;
-  background-color: white;
-  border: 1px solid #007bff; /* Match focus color */
-  border-top: none;
-  border-radius: 0 0 5px 5px;
-  max-height: 180px; /* Taller list */
-  overflow-y: auto;
-  list-style: none;
-  margin: 0;
-  padding: 4px 0; /* Padding top/bottom */
-  z-index: 10;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-  /* Floating effect */
-  margin-top: -1px; /* Overlap input border */
-}
-.suggestions-dropdown li {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 0.95em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.suggestions-dropdown li:hover,
-.suggestions-dropdown li.active { /* Style for active item */
-  background-color: #007bff;
-  color: white;
-}
-.suggestions-dropdown li.loading-item,
-.suggestions-dropdown li.error-item,
-.suggestions-dropdown li.no-results-item {
-  font-style: italic;
-  color: #6c757d;
-  cursor: default;
-  background-color: #f8f9fa;
-  padding: 10px 14px;
-}
-.suggestions-dropdown li.error-item {
-  color: #dc3545;
-}
-
-
-.suggestion-error {
-  font-size: 0.8em;
-  color: #dc3545;
-  margin-top: 4px;
-  padding: 4px 6px;
-  border-radius: 3px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
   position: absolute;
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 9;
-  border-radius: 0 0 4px 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: white;
+  border: 1px solid var(--color-primary);
+  border-top: none;
+  border-radius: 0 0 0.375rem 0.375rem; /* 6px */
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0; /* 4px */
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   margin-top: -1px;
 }
-.suggestion-error.context-error {
-  color: #856404;
-  background-color: #fff3cd;
-  border: 1px solid #ffeeba;
+
+.suggestion-item {
+  padding: 0.5rem 0.875rem; /* 8px 14px */
+  cursor: pointer;
+  font-size: 0.875rem; /* 14px */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggestion-item:hover,
+.suggestion-item.active {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.suggestion-item-info,
+.suggestion-item-error {
+  font-style: italic;
+  color: #6b7280; /* gray-500 */
+  cursor: default;
+  background-color: #f9fafb; /* gray-50 */
+  padding: 0.5rem 0.875rem;
+}
+.suggestion-item-error {
+  color: #dc3545; /* var(--color-danger) */
 }
 </style>

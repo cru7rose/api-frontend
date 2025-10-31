@@ -1,113 +1,134 @@
 <template>
-  <div class="correction-editor-view">
-    <div v-if="state.loading" class="loading-indicator">
-      <p>Loading order details...</p>
-    </div>
-    <div v-else-if="state.error" class="error-message">
-      <p>
-        Failed to load order details: {{ state.error }}
-        <span v-if="orderId"> (ID: {{ orderId }})</span>
-      </p>
-    </div>
+  <div class="correction-editor-view p-4 md:p-6 bg-gray-100 min-h-full">
+    <div v/if="state.loading" class="loading-indicator text-center py-20">
+    <p class="text-lg font-medium text-gray-600">Loading order details...</p>
+  </div>
+  <div v-else-if="state.error" class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+    <strong class="font-bold">Failed to load order details:</strong>
+    <span class="block sm:inline">{{ state.error }}</span>
+    <span v-if="orderId"> (ID: {{ orderId }})</span>
+  </div>
 
-    <div v-else-if="state.detail" class="editor-layout">
-      <header class="editor-header card">
-        <h2>
-          Correction Editor (Barcode: {{ state.detail.barcode }})
+  <div
+      v-else-if="state.detail" class="editor-layout space-y-6">
+    <header class="editor-header bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800">
+          Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
         </h2>
-        <p>
-          Source: {{ state.detail.sourceSystem }} | Status: {{ state.detail.processingStatus }}
+        <p class="text-sm text-gray-500">
+          Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
+          Status: <StatusBadge :status="state.detail.processingStatus" />
         </p>
-      </header>
-
-      <div class="editor-map card">
-        <div ref="mapContainer" class="map-container-element"></div>
-        <div v-if="routeInfo" class="route-info">
-          <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-          <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-        </div>
       </div>
+    </header>
 
-      <div class="editor-columns">
+    <div class="editor-map bg-white shadow-md rounded-lg p-4">
+      <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
+      <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
+        <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+        <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
+      </div>
+    </div>
 
-        <div class="address-column card">
-          <AddressDisplay
-              title="Original Pickup"
-              :address="state.detail.originalPickup"
-              :alias="state.detail.originalPickup.alias"
-          />
-          <SuggestionList
-              title="Pickup Suggestions"
-              :suggestions="state.detail.suggestedPickup"
-              @accept="handleAcceptSuggestion('pickup', $event)"
-          />
-          <AddressForm
-              side="pickup"
-              :initialAddress="state.editedPickup"
-              :placesAdapter="placesAdapter"
-              @update="handleFormUpdate"
-          />
-          <div class="column-actions">
-            <button @click="handleUseOriginal('pickup')" class="button secondary">Use Original</button>
-            <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button">
-              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
-            </button>
-            <button @click="handleSave('pickup')" :disabled="state.saveLoading" class="button">
-              {{ state.saveLoading ? 'Saving...' : 'Save & Next (Pickup)' }}
-            </button>
-          </div>
-        </div>
+    <div class="editor-columns grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        <div class="address-column card">
-          <AddressDisplay
-              title="Original Delivery"
-              :address="state.detail.originalDelivery"
-              :alias="state.detail.originalDelivery.alias"
-          />
-          <SuggestionList
-              title="Delivery Suggestions"
-              :suggestions="state.detail.suggestedDelivery"
-              @accept="handleAcceptSuggestion('delivery', $event)"
-          />
-          <AddressForm
-              side="delivery"
-              :initialAddress="state.editedDelivery"
-              :placesAdapter="placesAdapter"
-              @update="handleFormUpdate"
-          />
-          <div class="column-actions">
-            <button @click="handleUseOriginal('delivery')" class="button secondary">Use Original</button>
-            <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button">
-              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+      <div class="address-column bg-white shadow-md rounded-lg space-y-4">
+        <AddressDisplay
+            title="Original Pickup"
+            :address="state.detail.originalPickup"
+            :alias="state.detail.originalPickup.alias"
+
+        />
+        <SuggestionList
+            title="Pickup Suggestions"
+            :suggestions="state.detail.suggestedPickup"
+            @accept="handleAcceptSuggestion('pickup', $event)"
+        />
+        <AddressForm
+            side="pickup"
+
+            :initialAddress="state.editedPickup"
+            :placesAdapter="placesAdapter"
+            @update="handleFormUpdate"
+        />
+        <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+          <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
+          <div class="flex gap-2">
+            <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
+              {{ state.geocodeLoading ?
+                'Geocoding...' : 'Geocode Edited' }}
             </button>
-            <button @click="handleSave('delivery')" :disabled="state.saveLoading" class="button">
-              {{ state.saveLoading ? 'Saving...' : 'Save & Next (Delivery)' }}
+            <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
+              {{ state.saveLoading ?
+                'Saving...' : 'Save & Next (Pickup)' }}
             </button>
           </div>
         </div>
       </div>
 
-      <div class="editor-footer card" v-if="isPending">
-        <div class="bulk-toggle">
+      <div class="address-column bg-white shadow-md rounded-lg space-y-4">
+        <AddressDisplay
+            title="Original Delivery"
+            :address="state.detail.originalDelivery"
+            :alias="state.detail.originalDelivery.alias"
+
+        />
+        <SuggestionList
+            title="Delivery Suggestions"
+            :suggestions="state.detail.suggestedDelivery"
+            @accept="handleAcceptSuggestion('delivery', $event)"
+        />
+        <AddressForm
+            side="delivery"
+
+            :initialAddress="state.editedDelivery"
+            :placesAdapter="placesAdapter"
+            @update="handleFormUpdate"
+        />
+        <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+          <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
+          <div class="flex gap-2">
+            <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
+
+              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+            </button>
+            <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
+              {{ state.saveLoading ?
+                'Saving...' : 'Save & Next (Delivery)' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="editor-footer bg-white shadow-md rounded-lg p-4 flex justify-between items-center" v-if="isPending">
+      <div class="bulk-toggle">
+        <label for="applyToSimilar" class="flex items-center cursor-pointer">
           <input
               id="applyToSimilar"
               type="checkbox"
-              v-model="applyToSimilar"
-          />
-          <label for="applyToSimilar">Apply this correction to all similar pending errors</label>
-        </div>
-        <button @click="handleSave('both')" :disabled="state.saveLoading" class="button">
-          {{ state.saveLoading ? 'Saving...' : 'Save Both & Go to Next' }}
-        </button>
-      </div>
-      <div v-else class="editor-footer card">
-        <p>
-          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected. (Status:
-          {{ state.detail.processingStatus }})
-        </p>
-      </div>
 
-    </div>
+              v-model="applyToSimilar"
+              class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
+        </label>
+      </div>
+      <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
+        {{ state.saveLoading ?
+          'Saving...' : 'Save Both & Go to Next' }}
+      </button>
+    </footer>
+    <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
+      <p class="font-medium text-yellow-800">
+        This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected.
+        (Current Status:
+        <StatusBadge :status="state.detail.processingStatus" />)
+      </p>
+    </footer>
+
+  </div>
   </div>
 </template>
 
@@ -120,14 +141,15 @@ import { useToast } from '@/composables/useToast.js';
 import AddressDisplay from '@/components/AddressDisplay.vue';
 import AddressForm from '@/components/AddressForm.vue';
 import SuggestionList from '@/components/SuggestionList.vue';
+import StatusBadge from '@/components/common/StatusBadge.vue'; // Import StatusBadge
 
 // Import Manifesto architecture controllers
 import { MapController } from "@/controllers/MapController.js";
 import { EditorFacade } from "@/controllers/EditorFacade.js";
 import { SaveFlowController } from "@/controllers/SaveFlowController.js";
-// import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js"; // DEPRECATED
 import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
-import { useWorklistStore } from '@/stores/WorklistStore.js'; // To get the queue
+import { useWorklistStore } from '@/stores/WorklistStore.js';
+// To get the queue
 import { Address } from '@/domain/WorkbenchModels.js';
 
 // === Injections ===
@@ -154,7 +176,8 @@ const state = reactive({
 const applyToSimilar = ref(false);
 const routeInfo = ref(null);
 const mapContainer = ref(null); // DOM ref for map
-const placesAdapter = ref(null); // To pass to AddressForm
+const placesAdapter = ref(null);
+// To pass to AddressForm
 
 // === Controller Setup ===
 let mapController = null;
@@ -165,7 +188,6 @@ let commandBus = null;
 const isPending = computed(
     () => state.detail?.processingStatus === 'PENDING_VERIFICATION'
 );
-
 // === Lifecycle Hooks ===
 onMounted(async () => {
   if (!orchestrator || !geoRuntime) {
@@ -186,10 +208,10 @@ onMounted(async () => {
   }
 
 
-  // 2. Initialize Save Controllers
-  // *** FIX for DEPRECATED WARNING ***
-  // The deprecated IdempotentSaveController is no longer instantiated.
-  // SaveFlowController defaults to using AddressExceptionApi internally.
+  // 2.
+  Initialize Save Controllers
+  // *** FIX: Instantiate SaveFlowController correctly ***
+  // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
   // *** END FIX ***
@@ -205,7 +227,6 @@ onUnmounted(() => {
     mapController = null;
   }
 });
-
 watch(mapContainer, async (newMapEl) => {
   if (newMapEl && !mapController) {
     log.info("Map container is now in DOM. Initializing MapController...");
@@ -219,7 +240,8 @@ watch(mapContainer, async (newMapEl) => {
 
       log.info("MapController initialized and injected into facade.");
 
-      // Now draw the initial route (data is already loaded and geocoded)
+      // Now
+      draw the initial route (data is already loaded and geocoded)
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -231,7 +253,8 @@ watch(mapContainer, async (newMapEl) => {
       await refreshRouteInfo();
 
     } catch (err) {
-      log.error("Failed to initialize MapController in watch block:", err);
+      log.error("Failed to
+      initialize MapController in watch block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
   } else if (!newMapEl && mapController) {
@@ -257,7 +280,6 @@ async function loadOrderData() {
 
   // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
-
   if (result.ok) {
     const snap = editorFacade.snapshot().editor;
     state.detail = snap.detail;
@@ -307,9 +329,9 @@ async function refreshRouteInfo() {
 
 // Handle updates from AddressForm.vue
 function handleFormUpdate(side, field, value) {
-  const target = side === 'pickup' ? state.editedPickup : state.editedDelivery;
+  const target = side === 'pickup' ?
+      state.editedPickup : state.editedDelivery;
   const newAddress = new Address({ ...target, [field]: value });
-
   if (side === 'pickup') {
     state.editedPickup = newAddress;
     editorFacade.setManualPickup(newAddress);
@@ -348,7 +370,6 @@ async function handleGeocode(side) {
   toast.info(`Geocoding ${side} address...`, 2000);
 
   const result = await editorFacade.geocodeAndFocus(side);
-
   if (result.ok) {
     const snap = editorFacade.snapshot().editor;
     if (side === 'pickup') {
@@ -356,7 +377,8 @@ async function handleGeocode(side) {
     } else {
       state.editedDelivery = snap.editedDelivery;
     }
-    await editorFacade.refreshRoute(); // Redraw route
+    await editorFacade.refreshRoute();
+// Redraw route
     await refreshRouteInfo(); // Get new stats
     toast.success('Geocoding successful. Address updated.', 3000);
   } else {
@@ -428,4 +450,69 @@ const log = {
 </script>
 
 <style scoped>
-/* STYLING REST
+/* Modern styling for the editor view */
+.correction-editor-view {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.editor-layout {
+  display: grid;
+  gap: 1.5rem; /* 24px */
+}
+
+/* Base styles for buttons */
+.button-primary, .button-secondary {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem; /* 14px */
+  font-weight: 500;
+  border-radius: 0.375rem; /* 6px */
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.button-primary {
+  background-color: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.button-primary:hover:not(:disabled) {
+  background-color: #004a9c; /* Darker blue */
+}
+
+.button-secondary {
+  background-color: #f3f4f6; /* gray-100 */
+  color: #374151; /* gray-700 */
+  border-color: #d1d5db; /* gray-300 */
+}
+
+.button-secondary:hover:not(:disabled) {
+  background-color: #e5e7eb; /* gray-200 */
+}
+
+.button-primary:disabled, .button-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-lg {
+  padding: 0.625rem 1.25rem;
+  font-size: 1rem; /* 16px */
+}
+
+.address-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* 16px */
+}
+
+.column-actions {
+  /* Styles are applied via flex utility classes */
+}
+
+.editor-footer .bulk-toggle {
+  /* Styles are applied via flex utility classes */
+}
+</style>

@@ -1,14 +1,26 @@
 <template>
-  <div class="suggestion-list">
-    <h3 v-if="title">{{ title }}</h3>
-    <ul v-if="suggestions && suggestions.length > 0">
-      <li v-for="(suggestion, index) in suggestions" :key="index">
-        <p><strong>{{ suggestion.fullAddressLabel || formatSuggestion(suggestion) }}</strong></p>
-        <p>Score: {{ suggestion.matchScore?.toFixed(2) || 'N/A' }}, Level: {{ suggestion.matchLevel || 'N/A' }}, Source: {{ suggestion.providerSource || 'N/A' }}</p>
-        <button @click="emitAccept(index)">Accept</button>
+  <div class="suggestion-list p-4">
+    <h3 v-if="title" class="text-sm font-semibold text-gray-700 mb-2">{{ title }} ({{ suggestions.length }})</h3>
+    <ul v-if="suggestions && suggestions.length > 0" class="max-h-48 overflow-y-auto space-y-1 pr-2">
+      <li v-for="(suggestion, index) in suggestions" :key="index"
+          class="p-2 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition flex justify-between items-center group"
+          @click="emitAccept(index)">
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-gray-800 truncate" :title="suggestion.fullAddressLabel || formatSuggestion(suggestion)">
+            {{ suggestion.fullAddressLabel || formatSuggestion(suggestion) }}
+          </p>
+          <p class="text-xs text-gray-500">
+            Score: <span class="font-medium">{{ suggestion.matchScore?.toFixed(2) || 'N/A' }}</span>,
+            Level: <span class="font-medium">{{ suggestion.matchLevel || 'N/A' }}</span>,
+            Source: <span class="font-medium">{{ suggestion.providerSource || 'N/A' }}</span>
+          </p>
+        </div>
+        <button class="ml-2 text-xs font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+          Accept
+        </button>
       </li>
     </ul>
-    <p v-else>No suggestions available.</p>
+    <p v-else class="text-sm text-gray-500 italic">No suggestions available.</p>
   </div>
 </template>
 
@@ -20,13 +32,11 @@ const props = defineProps({
     default: () => [],
   },
 });
-
 const emit = defineEmits(['accept']);
 
 const emitAccept = (index) => {
   emit('accept', index);
 };
-
 // Helper to format suggestion if full label is missing
 const formatSuggestion = (s) => {
   const parts = [
@@ -37,42 +47,22 @@ const formatSuggestion = (s) => {
 </script>
 
 <style scoped>
-.suggestion-list {
-  margin-top: 15px;
+/* Custom scrollbar for the list */
+.max-h-48::-webkit-scrollbar {
+  width: 6px;
 }
-h3 {
-  margin-bottom: 10px;
-  font-size: 1em;
-  font-weight: bold;
+
+.max-h-48::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
 }
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  max-height: 200px; /* Limit height */
-  overflow-y: auto; /* Add scroll */
-  border: 1px solid #eee;
-  border-radius: 4px;
+
+.max-h-48::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
 }
-li {
-  padding: 10px;
-  border-bottom: 1px solid #eee;
-}
-li:last-child {
-  border-bottom: none;
-}
-li p {
-  margin: 0 0 5px 0;
-  font-size: 0.9em;
-}
-li button {
-  padding: 3px 8px;
-  font-size: 0.8em;
-  cursor: pointer;
-  margin-top: 5px;
-}
-p {
-  font-style: italic;
-  color: #888;
+
+.max-h-48::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
 </style>
