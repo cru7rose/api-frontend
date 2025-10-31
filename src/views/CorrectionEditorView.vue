@@ -133,9 +133,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, inject, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useToast } from '@/composables/useToast.js';
+import {ref, reactive, computed, onMounted, onUnmounted, inject, watch} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+import {useToast} from '@/composables/useToast.js';
 
 // Import classic components
 import AddressDisplay from '@/components/AddressDisplay.vue';
@@ -144,15 +144,15 @@ import SuggestionList from '@/components/SuggestionList.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue'; // Import StatusBadge
 
 // Import Manifesto architecture controllers
-import { MapController } from "@/controllers/MapController.js";
-import { EditorFacade } from "@/controllers/EditorFacade.js";
-import { SaveFlowController } from "@/controllers/SaveFlowController.js";
+import {MapController} from "@/controllers/MapController.js";
+import {EditorFacade} from "@/controllers/EditorFacade.js";
+import {SaveFlowController} from "@/controllers/SaveFlowController.js";
 // import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
 // DEPRECATED
-import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
-import { useWorklistStore } from '@/stores/WorklistStore.js';
+import {EditorCommandBus} from "@/controllers/EditorCommandBus.js";
+import {useWorklistStore} from '@/stores/WorklistStore.js';
 // To get the queue
-import { Address } from '@/domain/WorkbenchModels.js';
+import {Address} from '@/domain/WorkbenchModels.js';
 
 // === Injections ===
 const orchestrator = inject("orchestrator");
@@ -204,14 +204,17 @@ onMounted(async () => {
   // 1b. Get the places adapter (if it exists) for AddressForm
   try {
     placesAdapter.value = geoRuntime.placesAdapter();
-  } catch(e) {
+  } catch (e) {
     log.error("Could not get places adapter for AddressForm", e);
     placesAdapter.value = null;
   }
 
 
-  // 2. Initialize Save Controllers
-// *** FIX: Instantiate SaveFlowController correctly ***
+  // 2.
+  Initialize
+  Save
+  Controllers
+  // *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
@@ -234,15 +237,15 @@ watch(mapContainer, async (newMapEl) => {
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
+      await mapController.init(newMapEl, {lat: 52.23, lon: 21.01, zoom: 6});
 
       // Inject the new mapController into the existing facade
       editorFacade = orchestrator.getEditor(mapController);
 
       log.info("MapController initialized and injected into facade.");
 
-      // Now
-      draw the initial route (data is already loaded and geocoded)
+      // *** BUILD FIX: Merged broken comment into one line ***
+// Now draw the initial route (data is already loaded and geocoded)
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -255,7 +258,9 @@ watch(mapContainer, async (newMapEl) => {
 
     } catch (err) {
       log.error("Failed to
-      initialize MapController in watch block:", err);
+      initialize
+      MapController in watch
+      block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
   } else if (!newMapEl && mapController) {
@@ -332,7 +337,7 @@ async function refreshRouteInfo() {
 function handleFormUpdate(side, field, value) {
   const target = side === 'pickup' ?
       state.editedPickup : state.editedDelivery;
-  const newAddress = new Address({ ...target, [field]: value });
+  const newAddress = new Address({...target, [field]: value});
   if (side === 'pickup') {
     state.editedPickup = newAddress;
     editorFacade.setManualPickup(newAddress);
@@ -423,13 +428,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
+        router.push({name: 'worklist'});
       }
     } else {
       throw result.error;
@@ -472,26 +477,32 @@ const log = {
   transition: all 0.2s ease;
   cursor: pointer;
 }
+
 .button-primary {
   background-color: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
 }
+
 .button-primary:hover:not(:disabled) {
   background-color: #004a9c; /* Darker blue */
 }
+
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
   border-color: #d1d5db; /* gray-300 */
 }
+
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb; /* gray-200 */
 }
+
 .button-primary:disabled, .button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
 .button-lg {
   padding: 0.625rem 1.25rem;
   font-size: 1rem; /* 16px */
