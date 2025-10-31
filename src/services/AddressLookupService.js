@@ -1,12 +1,15 @@
-// FILE: src/services/AddressLookupService.js (NEW FILE)
-// REASON: Implements frontend part of feature request 3 (Address Suggestions Tool).
-//         This service calls the backend's /api/address-lookup endpoints.
-
+// ============================================================================
+// Frontend: Update AddressLookupService
+// FILE: src/services/AddressLookupService.js
+// REASON: Change all methods from GET to POST to avoid WAF 403 errors.
+//         Use new AddressLookupRequestDTO body instead of query params.
+// ============================================================================
 import apiClient from '@/services/api.js';
 
 /**
  * ARCHITECTURE: Frontend service to call the backend's AddressLookupController.
  * This fetches suggestions for streets, postals, and cities.
+ * UPDATED: Now uses POST with a body to avoid WAF 403 errors.
  */
 export class AddressLookupService {
     constructor(client = apiClient) {
@@ -22,8 +25,9 @@ export class AddressLookupService {
     async findStreets(postalCode, city) {
         if (!postalCode || !city) return [];
         try {
-            const params = new URLSearchParams({ postalCode, city });
-            const response = await this.api.get(`/api/address-lookup/streets?${params.toString()}`);
+            // *** CHANGED to POST ***
+            const payload = { postalCode, city };
+            const response = await this.api.post(`/api/address-lookup/streets`, payload);
             return response.data || [];
         } catch (error) {
             console.error(`[AddressLookupService] Failed to findStreets for ${postalCode}, ${city}:`, error);
@@ -40,8 +44,9 @@ export class AddressLookupService {
     async findPostalCodes(street, city) {
         if (!street || !city) return [];
         try {
-            const params = new URLSearchParams({ street, city });
-            const response = await this.api.get(`/api/address-lookup/postalcodes?${params.toString()}`);
+            // *** CHANGED to POST ***
+            const payload = { street, city };
+            const response = await this.api.post(`/api/address-lookup/postalcodes`, payload);
             return response.data || [];
         } catch (error) {
             console.error(`[AddressLookupService] Failed to findPostalCodes for ${street}, ${city}:`, error);
@@ -57,8 +62,9 @@ export class AddressLookupService {
     async findCities(postalCode) {
         if (!postalCode) return [];
         try {
-            const params = new URLSearchParams({ postalCode });
-            const response = await this.api.get(`/api/address-lookup/cities?${params.toString()}`);
+            // *** CHANGED to POST ***
+            const payload = { postalCode };
+            const response = await this.api.post(`/api/address-lookup/cities`, payload);
             return response.data || [];
         } catch (error) {
             console.error(`[AddressLookupService] Failed to findCities for ${postalCode}:`, error);

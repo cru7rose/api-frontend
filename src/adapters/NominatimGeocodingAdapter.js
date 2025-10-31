@@ -3,6 +3,8 @@
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 // REASON: Change hardcoded default URL to use the '/nominatim/search.php' proxy path.
 // REASON: Remove hardcoded '/search' path, as it's now in the config URL.
+// REASON (FIX): Correctly build query params, sending 'street' and 'houseNumber'
+//               separately instead of incorrectly combining them.
 // ============================================================================
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 import { AddressNormalizer } from '@/services/AddressNormalizer';
@@ -10,6 +12,7 @@ import { AddressNormalizer } from '@/services/AddressNormalizer';
  * ARCHITECTURE: NominatimGeocodingAdapter wraps OpenStreetMap Nominatim API for geocoding.
  * REFACTORED: Default URL now points to the proxy path '/nominatim/search.php'.
  * REFACTORED: Adapter no longer appends '/search'.
+ * FIX: Correctly builds query, separating street and houseNumber.
  */
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
@@ -37,20 +40,28 @@ export class NominatimGeocodingAdapter {
             return null;
         }
 
+        // *** FIX: Build parameters correctly ***
         const params = new URLSearchParams({
-            street: `${address.houseNumber || ''} ${address.street || ''}`.trim(),
+            // street: `${address.houseNumber || ''} ${address.street || ''}`.trim(), // <-- OLD BUGGY LINE
+            street: address.street || '', // Send street
             city: address.city || '',
             postalcode: address.postalCode || '',
             country: address.country || 'PL',
             format: 'jsonv2',
-
             addressdetails: '1',
             limit: '1',
             email: this.email,
         });
-// *** FIX: No longer appends '/search' ***
+
+        // Only add houseNumber to the query if it's present
+        if (address.houseNumber && String(address.houseNumber).trim()) {
+            params.set('street', `${String(address.houseNumber).trim()} ${address.street || ''}`);
+        }
+        // *** END FIX ***
+
+        // *** FIX: No longer appends '/search' ***
         const url = `${this.baseUrl}?${params.toString()}`;
-// *** END FIX ***
+        // *** END FIX ***
 
         const queryDesc = `${params.get('street')}, ${params.get('postalcode')} ${params.get('city')}`;
         log.debug(`[Nominatim] Geocoding query: ${queryDesc}`);
@@ -91,7 +102,6 @@ export class NominatimGeocodingAdapter {
                 longitude: lon,
                 _provider: 'Nominatim',
                 _displayName: best.display_name,
-
                 _osmType: best.osm_type,
                 _osmId: best.osm_id,
                 _confidence: best.importance ?

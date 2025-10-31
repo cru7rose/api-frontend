@@ -694,6 +694,8 @@ export const useAddressUploadStore = defineStore('addressUpload', {
 // Frontend: New Store
 // FILE: src/stores/adminOrderStore.js (NEW FILE)
 // REASON: Implements Request 2: State management for the new Order Admin view.
+// REASON (UPDATE): Added reactive filters and logic to apply them.
+// REASON (UPDATE): Added deleteOrder action.
 // ============================================================================
 import { defineStore } from 'pinia';
 import apiClient from '@/services/api';
@@ -713,6 +715,13 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         field: 'lastUpdatedAt',
         direction: 'DESC',
     });
+    const filters = reactive({
+        barcode: '',
+        source: '',
+        status: '',
+        dateFrom: '',
+        dateTo: ''
+    });
     const loading = ref(false);
     const error = ref(null);
     const toast = useToast();
@@ -727,6 +736,12 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
             size: pagination.itemsPerPage,
             sort: `${sort.field},${sort.direction}`,
         });
+
+        if (filters.barcode) params.set('barcode', filters.barcode);
+        if (filters.source) params.set('source', filters.source);
+        if (filters.status) params.set('status', filters.status);
+        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+        if (filters.dateTo) params.set('dateTo', filters.dateTo);
 
         try {
             const response = await apiClient.get(`/api/admin/orders/all?${params.toString()}`);
@@ -752,16 +767,15 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         }
         loading.value = true;
         error.value = null;
-
         try {
             const response = await apiClient.post(`/api/admin/orders/${orderId}/status`, {
                 newStatus: newStatus,
             });
-
             // Update the single order in the list
             const index = orders.value.findIndex(o => o.id === orderId);
             if (index !== -1) {
-                orders.value[index] = response.data;
+                // Update the item in place to maintain reactivity
+                orders.value[index] = { ...orders.value[index], ...response.data };
             }
 
             toast.success(`Successfully updated status for order ${response.data.barcode} to ${newStatus}.`);
@@ -773,6 +787,42 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
             loading.value = false;
         }
     }
+
+    // *** ADDED: deleteOrder action ***
+    async function deleteOrder(orderId, barcode) {
+        if (!orderId) {
+            toast.error("Order ID is required.");
+            return;
+        }
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiClient.delete(`/api/admin/orders/${orderId}`);
+
+            // Remove the order from the local list
+            const index = orders.value.findIndex(o => o.id === orderId);
+            if (index !== -1) {
+                orders.value.splice(index, 1);
+                pagination.totalItems--; // Decrement total
+            }
+
+            toast.success(`Successfully deleted order ${barcode} (ID: ${orderId}).`);
+
+            // If the page is now empty, go back one page
+            if (orders.value.length === 0 && pagination.currentPage > 0) {
+                setPage(pagination.currentPage - 1);
+            }
+
+        } catch (err) {
+            console.error(`Failed to delete order ${orderId}:`, err);
+            error.value = err.response?.data?.error || err.message || `Failed to delete order ${orderId}.`;
+            toast.error(error.value, 10000);
+        } finally {
+            loading.value = false;
+        }
+    }
+    // *** END ADDED ***
+
 
     function setPage(pageNumber) {
         if (pageNumber >= 0 && pageNumber < (pagination.totalPages || 1) ) {
@@ -792,17 +842,36 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         fetchAllOrders();
     }
 
+    function applyFilters() {
+        pagination.currentPage = 0;
+        fetchAllOrders();
+    }
+
+    function resetFilters() {
+        filters.barcode = '';
+        filters.source = '';
+        filters.status = '';
+        filters.dateFrom = '';
+        filters.dateTo = '';
+        applyFilters();
+    }
+
+
     // --- Return Store ---
     return {
         orders,
         pagination,
         sort,
+        filters,
         loading,
         error,
         fetchAllOrders,
         changeOrderStatus,
+        deleteOrder, // Expose delete action
         setPage,
         setSort,
+        applyFilters,
+        resetFilters,
     };
 });
 
@@ -1302,7 +1371,7 @@ export const useLogStore = defineStore('logStore', () => {
 // ============================================================================
 // Frontend: Update WorklistStore (Supersedes previous version)
 // FILE: src/stores/WorklistStore.js
-// REASON: Align default status with canonical mission state 'PENDING_VERIFICATION'.
+// REASON: Align default status with new "ALL_ACTIONABLE" logic.
 // ============================================================================
 // FILE: src/stores/WorklistStore.js (Supersedes previous version)
 
@@ -1310,16 +1379,15 @@ import { defineStore } from 'pinia';
 import { WorklistFilter } from "@/domain/WorklistFilter";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
-
 /**
  * ARCHITECTURE: Pinia store for managing the state of the Address Exception Worklist.
- * REFACTORED: Default filter status set to PENDING_VERIFICATION.
+ * REFACTORED: Default filter status set to ALL_ACTIONABLE.
  */
 export const useWorklistStore = defineStore('worklist', {
     state: () => ({
-        // *** MODIFIED: Use PENDING_VERIFICATION ***
+        // *** MODIFIED: Use ALL_ACTIONABLE ***
         filter: new WorklistFilter({
-            status: 'PENDING_VERIFICATION',
+            status: 'ALL_ACTIONABLE',
             barcode: '',
             customerId: '',
             dateFrom: '', // YYYY-MM-DD
@@ -1341,7 +1409,8 @@ export const useWorklistStore = defineStore('worklist', {
             return state.selection.includes(orderId);
         },
         currentFilter: (state) => {
-            return state.filter.toPlainObject ? state.filter.toPlainObject() : { ...state.filter };
+            return state.filter.toPlainObject ?
+                state.filter.toPlainObject() : { ...state.filter };
         },
         currentPageInfo: (state) => {
             return { ...state.pagination };
@@ -1363,17 +1432,18 @@ export const useWorklistStore = defineStore('worklist', {
             try {
                 const filterParams = {
                     ...(this.filter.toQueryRecord ? this.filter.toQueryRecord() : this.filter),
-                    page: this.pagination.currentPage > 0 ? this.pagination.currentPage - 1 : 0,
+                    page: this.pagination.currentPage > 0 ?
+                        this.pagination.currentPage - 1 : 0,
                     size: this.pagination.itemsPerPage,
                 };
                 Object.keys(filterParams).forEach(key => (filterParams[key] == null || filterParams[key] === '') && delete filterParams[key]);
                 const result = await api.getWorklist(filterParams);
-
                 if (result.ok) {
                     this.items = result.value.items || [];
                     this.pagination.totalItems = result.value.total || 0;
                     this.pagination.totalPages = this.pagination.itemsPerPage > 0
-                        ? Math.ceil(this.pagination.totalItems / this.pagination.itemsPerPage) || 1
+                        ?
+                        Math.ceil(this.pagination.totalItems / this.pagination.itemsPerPage) || 1
                         : 1;
                     if (this.pagination.currentPage > this.pagination.totalPages) {
                         this.pagination.currentPage = this.pagination.totalPages;
@@ -1402,9 +1472,9 @@ export const useWorklistStore = defineStore('worklist', {
         },
 
         async resetFilter() {
-            // *** MODIFIED: Use PENDING_VERIFICATION ***
+            // *** MODIFIED: Use ALL_ACTIONABLE ***
             this.filter = new WorklistFilter({
-                status: 'PENDING_VERIFICATION',
+                status: 'ALL_ACTIONABLE',
                 barcode: '',
                 customerId: '',
                 dateFrom: '',
@@ -2324,6 +2394,8 @@ export class MapGeocoderAdapter {
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 // REASON: Change hardcoded default URL to use the '/nominatim/search.php' proxy path.
 // REASON: Remove hardcoded '/search' path, as it's now in the config URL.
+// REASON (FIX): Correctly build query params, sending 'street' and 'houseNumber'
+//               separately instead of incorrectly combining them.
 // ============================================================================
 // FILE: src/adapters/NominatimGeocodingAdapter.js
 import { AddressNormalizer } from '@/services/AddressNormalizer';
@@ -2331,6 +2403,7 @@ import { AddressNormalizer } from '@/services/AddressNormalizer';
  * ARCHITECTURE: NominatimGeocodingAdapter wraps OpenStreetMap Nominatim API for geocoding.
  * REFACTORED: Default URL now points to the proxy path '/nominatim/search.php'.
  * REFACTORED: Adapter no longer appends '/search'.
+ * FIX: Correctly builds query, separating street and houseNumber.
  */
 export class NominatimGeocodingAdapter {
     constructor(nominatimUrl, email) {
@@ -2358,20 +2431,28 @@ export class NominatimGeocodingAdapter {
             return null;
         }
 
+        // *** FIX: Build parameters correctly ***
         const params = new URLSearchParams({
-            street: `${address.houseNumber || ''} ${address.street || ''}`.trim(),
+            // street: `${address.houseNumber || ''} ${address.street || ''}`.trim(), // <-- OLD BUGGY LINE
+            street: address.street || '', // Send street
             city: address.city || '',
             postalcode: address.postalCode || '',
             country: address.country || 'PL',
             format: 'jsonv2',
-
             addressdetails: '1',
             limit: '1',
             email: this.email,
         });
-// *** FIX: No longer appends '/search' ***
+
+        // Only add houseNumber to the query if it's present
+        if (address.houseNumber && String(address.houseNumber).trim()) {
+            params.set('street', `${String(address.houseNumber).trim()} ${address.street || ''}`);
+        }
+        // *** END FIX ***
+
+        // *** FIX: No longer appends '/search' ***
         const url = `${this.baseUrl}?${params.toString()}`;
-// *** END FIX ***
+        // *** END FIX ***
 
         const queryDesc = `${params.get('street')}, ${params.get('postalcode')} ${params.get('city')}`;
         log.debug(`[Nominatim] Geocoding query: ${queryDesc}`);
@@ -2412,7 +2493,6 @@ export class NominatimGeocodingAdapter {
                 longitude: lon,
                 _provider: 'Nominatim',
                 _displayName: best.display_name,
-
                 _osmType: best.osm_type,
                 _osmId: best.osm_id,
                 _confidence: best.importance ?
@@ -2688,6 +2768,7 @@ function handleSave() {
   <div class="address-form p-4 border-t border-gray-100">
     <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
 
+
     <div class="form-group mb-3">
 
       <label :for="`${side}-alias`" class="block text-xs font-medium text-gray-600 mb-1">Alias</label>
@@ -2701,6 +2782,7 @@ function handleSave() {
           disabled
       />
 
+
     </div>
 
     <div class="form-grid grid grid-cols-2 gap-x-4 gap-y-3">
@@ -2712,18 +2794,16 @@ function handleSave() {
             type="text"
             :value="addressModelValue?.street"
             @input="handleInput('street', $event.target.value)"
-
             @focus="handleFocus('street')"
             @blur="hideSuggestions"
-
+            @keydown="handleKeydown"
             autocomplete="off"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'street'" class="suggestions-dropdown" ref="streetSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length
-=== 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Postal/City.</li>
           <li
               v-for="(suggestion, index) in
 suggestions"
@@ -2731,7 +2811,6 @@ suggestions"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
-
               class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
@@ -2744,7 +2823,6 @@ suggestions"
         <label :for="`${side}-houseNumber`" class="block text-xs font-medium text-gray-600 mb-1">House No.</label>
         <input
             :id="`${side}-houseNumber`"
-
             type="text"
             :value="addressModelValue?.houseNumber"
             @input="emitUpdate('houseNumber', $event.target.value)"
@@ -2756,27 +2834,22 @@ suggestions"
       <div class="form-group suggestion-group col-span-1">
         <label :for="`${side}-postalCode`" class="block text-xs font-medium text-gray-600 mb-1">Postal Code</label>
         <input
-
             :id="`${side}-postalCode`"
             type="text"
             :value="addressModelValue?.postalCode"
             @input="handleInput('postalCode', $event.target.value)"
             @focus="handleFocus('postalCode')"
             @blur="hideSuggestions"
-
             @keydown="handleKeydown"
             autocomplete="off"
-
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'postalCode'" class="suggestions-dropdown" ref="postalSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Street/City.</li>
           <li
-
               v-for="(suggestion, index) in suggestions"
-
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
@@ -2784,7 +2857,6 @@ suggestions"
               class="suggestion-item"
           >
             {{
-
               formatSuggestion(suggestion) }}
           </li>
         </ul>
@@ -2796,9 +2868,7 @@ suggestions"
             :id="`${side}-city`"
             type="text"
             :value="addressModelValue?.city"
-
             @input="handleInput('city', $event.target.value)"
-
             @focus="handleFocus('city')"
             @blur="hideSuggestions"
             @keydown="handleKeydown"
@@ -2806,18 +2876,14 @@ suggestions"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'city'" class="suggestions-dropdown" ref="citySuggestionsRef">
-
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Postal Code.</li>
           <li
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
-
               @mousedown.prevent="selectSuggestion(suggestion)"
-
               @mouseenter="activeSuggestionIndex = index"
               class="suggestion-item"
           >
@@ -2827,17 +2893,14 @@ suggestions"
       </div>
 
       <div class="form-group col-span-2">
-
         <label :for="`${side}-country`" class="block text-xs font-medium text-gray-600 mb-1">Country</label>
         <input
             :id="`${side}-country`"
             type="text"
-
             :value="addressModelValue?.country"
             @input="emitUpdate('country', $event.target.value)"
             maxlength="2"
             class="form-input"
-
         />
       </div>
 
@@ -2846,11 +2909,9 @@ suggestions"
         <input
             :id="`${side}-latitude`"
             type="number"
-
             step="any"
             :value="addressModelValue?.latitude"
-            @input="emitUpdate('latitude', $event.target.value ?
-parseFloat($event.target.value) : null)"
+            @input="emitUpdate('latitude', $event.target.value ? parseFloat($event.target.value) : null)"
             class="form-input"
         />
       </div>
@@ -2861,9 +2922,7 @@ parseFloat($event.target.value) : null)"
             :id="`${side}-longitude`"
             type="number"
             step="any"
-
             :value="addressModelValue?.longitude"
-
             @input="emitUpdate('longitude', $event.target.value ? parseFloat($event.target.value) : null)"
             class="form-input"
         />
@@ -2874,7 +2933,8 @@ parseFloat($event.target.value) : null)"
 
 <script setup>
 import { ref, computed, reactive, watch, onUnmounted, nextTick } from 'vue';
-import { AddressExceptionApi } from '@/services/AddressExceptionApi';
+// *** MODIFIED: Import the correct service with .js extension ***
+import { AddressLookupService } from '@/services/AddressLookupService.js';
 import { DebounceTimer } from '@/services/DebounceTimer';
 
 const props = defineProps({
@@ -2883,17 +2943,13 @@ const props = defineProps({
     required: true,
   },
   initialAddress: {
-
     type: Object,
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
-
-  placesAdapter: {
-    type: Object,
-    default: null,
-  },
+  // *** REMOVED: placesAdapter is no longer needed ***
 });
 const emit = defineEmits(['update']);
+
 // --- State ---
 const suggestions = ref([]);
 const showSuggestions = ref(false);
@@ -2901,34 +2957,55 @@ const suggestionsLoading = ref(false);
 const suggestionsError = ref(null);
 const activeField = ref(null);
 const activeSuggestionIndex = ref(-1);
-const activeSuggestionSource = ref('none');
-// 'google' or 'backend'
+const activeSuggestionSource = ref('backend'); // We only have one source now
 
-// *** BUGFIX: Remove broken API dependency ***
-// const api = new AddressExceptionApi();
-const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-// const backendDebouncer = new DebounceTimer(300);
-// REMOVED
+// *** MODIFIED: Use AddressLookupService and a single debouncer ***
+const lookupService = new AddressLookupService();
+const debouncer = new DebounceTimer(300); // Debounce for backend calls
 
 const addressModelValue = computed(() => props.initialAddress);
 const sideLabel = computed(() => "Edit " + props.side.charAt(0).toUpperCase() + props.side.slice(1));
-const localPlacesAdapter = ref(props.placesAdapter);
 
-// --- Watch for adapter prop ---
-watch(() => props.placesAdapter, (newAdapter) => {
-  localPlacesAdapter.value = newAdapter;
-  if(newAdapter) console.log(`Google Places Adapter received in AddressForm (${props.side}).`);
-});
+// *** REMOVED: Watch for placesAdapter ***
+
 // --- Suggestion Fetching Logic ---
 
-const fetchGoogleSuggestions = async (field, value) => {
-  if (!localPlacesAdapter.value || !value || value.length < 3) {
+// *** MODIFIED: This function now calls the AddressLookupService ***
+const fetchSuggestions = async (field, typedValue) => {
+  // Use the *current* state of the form for context
+  const addr = addressModelValue.value;
+  if (!addr) return;
+
+  // Only show suggestions if we have the necessary context
+  const hasPostal = addr.postalCode && addr.postalCode.length > 2;
+  const hasCity = addr.city && addr.city.length > 2;
+  const hasStreet = addr.street && addr.street.length > 2;
+
+  // Do not fetch if crucial context is missing for the given field
+  if (field === 'street' && (!hasPostal || !hasCity)) {
+    suggestions.value = [];
+    showSuggestions.value = true; // Show "Type to search..." message
+    return;
+  }
+  if (field === 'postalCode' && (!hasStreet || !hasCity)) {
+    suggestions.value = [];
+    showSuggestions.value = true;
+    return;
+  }
+  if (field === 'city' && !hasPostal) {
     suggestions.value = [];
     showSuggestions.value = true;
     return;
   }
 
-  activeSuggestionSource.value = 'google';
+  // Guard against searching on every keystroke if context is missing
+  if (typedValue && typedValue.length < 2 && field !== 'city') {
+    suggestions.value = [];
+    showSuggestions.value = true;
+    return;
+  }
+
+  activeSuggestionSource.value = 'backend';
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   suggestionsLoading.value = true;
@@ -2936,76 +3013,72 @@ const fetchGoogleSuggestions = async (field, value) => {
   showSuggestions.value = true;
 
   try {
-    const query = value;
-    const countryCode = addressModelValue.value?.country ||
-        'PL';
-    const results = await localPlacesAdapter.value.suggest(query, countryCode);
-    suggestions.value = results || [];
+    if (field === 'street') {
+      suggestions.value = await lookupService.findStreets(addr.postalCode, addr.city);
+    } else if (field === 'postalCode') {
+      suggestions.value = await lookupService.findPostalCodes(addr.street, addr.city);
+    } else if (field === 'city') {
+      suggestions.value = await lookupService.findCities(addr.postalCode);
+    } else {
+      suggestions.value = [];
+    }
   } catch (e) {
-    suggestionsError.value = "Failed to fetch Google suggestions.";
-    console.error(`fetchGoogleSuggestions error (${props.side}):`, e);
+    suggestionsError.value = "Failed to fetch suggestions.";
+    console.error(`fetchSuggestions error (${props.side}):`, e);
     suggestions.value = [];
   } finally {
     suggestionsLoading.value = false;
   }
 };
-// *** BUGFIX: Remove broken backend suggestion logic ***
-// const fetchBackendSuggestions = ... (REMOVED)
 
 // --- Event Handlers ---
 
 const emitUpdate = (field, value) => {
   emit('update', props.side, field, value);
 };
+
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-// Trigger Google Places (debounced) as primary suggestion source on type
+
+  // *** MODIFIED: Use backend debouncer ***
   if (field === 'street' || field === 'city' || field === 'postalCode') {
-    placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
+    debouncer.run(() => fetchSuggestions(field, value));
   } else {
     // Clear suggestions for other fields
     hideSuggestions();
-    placesDebouncer.cancel();
-    // backendDebouncer.cancel();
-// REMOVED
+    debouncer.cancel();
   }
 };
+
 const handleFocus = (field) => {
-  // Hide any other open dropdowns
-  hideSuggestions();
-// Set active field for keyboard nav and context
+  hideSuggestions(); // Hide any other open dropdowns
   activeField.value = field;
   activeSuggestionIndex.value = -1;
-  activeSuggestionSource.value = 'none';
-// Reset source
+  activeSuggestionSource.value = 'backend'; // Set source
 
-  // *** BUGFIX: Removed broken backend logic ***
-  // if (field === 'street' || field === 'postalCode' || field === 'city') {
-  //   if (suggestions.value.length === 0) {
-  //     backendDebouncer.run(() => fetchBackendSuggestions(field));
-//   }
-  // }
+  // *** MODIFIED: Trigger backend suggestions on focus ***
+  if (field === 'street' || field === 'postalCode' || field === 'city') {
+    // Pass null for typedValue to indicate it's a focus-based contextual search
+    debouncer.run(() => fetchSuggestions(field, null));
+  }
 };
 
 const selectSuggestion = (suggestion) => {
   if (!suggestion) return;
   const source = activeSuggestionSource.value;
-  if (source === 'google') {
-    // Google suggestion selected (full object)
-    emitUpdate('street', suggestion.street || addressModelValue.value.street || '');
-    emitUpdate('houseNumber', suggestion.houseNumber || addressModelValue.value.houseNumber || null);
-    emitUpdate('postalCode', suggestion.postalCode || addressModelValue.value.postalCode || '');
-    emitUpdate('city', suggestion.city || addressModelValue.value.city || '');
-    emitUpdate('country', suggestion.countryCode || addressModelValue.value.country || 'PL');
-    emitUpdate('latitude', suggestion.latitude);
-    emitUpdate('longitude', suggestion.longitude);
 
-    if (localPlacesAdapter.value) {
-      localPlacesAdapter.value.session.renew();
+  // *** MODIFIED: Logic for backend suggestion (AddressLookupSuggestionDTO) ***
+  if (source === 'backend') {
+    // A backend suggestion only contains the value for the *active field*
+    emitUpdate(activeField.value, suggestion.value);
+
+    // Optional: If the suggestion has coords, update them
+    if (suggestion.latitude != null && suggestion.longitude != null) {
+      emitUpdate('latitude', suggestion.latitude);
+      emitUpdate('longitude', suggestion.longitude);
     }
   }
-  // *** BUGFIX: Removed broken 'backend' suggestion logic ***
-  // else if (source === 'backend') { ... }
+  // *** END MODIFIED ***
 
   hideSuggestions();
 };
@@ -3022,16 +3095,11 @@ const hideSuggestions = () => {
 };
 
 const formatSuggestion = (s) => {
-  // Google Places suggestion
-  if (s.providerSource === 'GOOGLE_PLACES') {
-    if (s.fullAddressLabel) return s.fullAddressLabel;
-    const parts = [s.street, s.houseNumber, s.postalCode, s.city, s.countryCode].filter(Boolean);
-    return parts.join(', ') || 'Suggestion';
-  }
-  // Backend suggestion (AddressLookupSuggestionDTO)
+  // *** MODIFIED: All suggestions are now { value, ... } ***
   return s.value;
 };
-// --- Keyboard Navigation ---
+
+// --- Keyboard Navigation (Unchanged) ---
 const handleKeydown = (event) => {
   if (!showSuggestions.value) return;
 
@@ -3054,9 +3122,9 @@ const handleKeydown = (event) => {
     hideSuggestions();
   }
 };
+
 onUnmounted(() => {
-  placesDebouncer.cancel();
-  // backendDebouncer.cancel(); // REMOVED
+  debouncer.cancel();
 });
 </script>
 
@@ -11469,6 +11537,78 @@ const handleDelete = async (ruleId) => {
       Use with caution.
     </p>
 
+    <div class="filters-container bg-white rounded-xl shadow-lg p-4 mb-6">
+      <h2 class="text-lg font-semibold text-gray-700 mb-3">Filters</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+        <div class="form-group">
+          <label for="filter-barcode" class="form-label">Barcode</label>
+          <input
+              id="filter-barcode"
+              type="text"
+              v-model="store.filters.barcode"
+              placeholder="Filter by barcode..."
+              class="form-input"
+              @keyup.enter="store.applyFilters"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-source" class="form-label">Source System</label>
+          <input
+              id="filter-source"
+              type="text"
+              v-model="store.filters.source"
+              placeholder="e.g., API, WMS, CDC"
+              class="form-input"
+              @keyup.enter="store.applyFilters"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-status" class="form-label">Status</label>
+          <select id="filter-status" v-model="store.filters.status" class="form-input">
+            <option value="">All Statuses</option>
+            <option v-for="s in allStatuses" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filter-date-from" class="form-label">Ingested From</label>
+          <input
+              id="filter-date-from"
+              type="date"
+              v-model="store.filters.dateFrom"
+              class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-date-to" class="form-label">Ingested To</label>
+          <input
+              id="filter-date-to"
+              type="date"
+              v-model="store.filters.dateTo"
+              class="form-input"
+          />
+        </div>
+
+      </div>
+      <div class="flex gap-3 mt-4 justify-end">
+        <button
+            @click="store.resetFilters"
+            :disabled="store.loading"
+            class="button-secondary">
+          Reset Filters
+        </button>
+        <button
+            @click="store.applyFilters"
+            :disabled="store.loading"
+            class="button-primary">
+          {{ store.loading ? 'Searching...' : 'Search' }}
+        </button>
+      </div>
+    </div>
     <div v-if="store.loading && !store.orders.length" class="text-center py-16">
       <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mx-auto"></div>
       <p class="text-lg text-slate-500 mt-5">Loading all orders...</p>
@@ -11481,7 +11621,7 @@ const handleDelete = async (ruleId) => {
 
     <div v-else-if="!store.orders.length" class="text-center py-16 bg-white rounded-xl shadow-md">
       <h3 class="mt-3 text-lg font-medium text-slate-800">No Orders Found</h3>
-      <p class="mt-1 text-sm text-slate-500">The database contains no order shadow records.</p>
+      <p class="mt-1 text-sm text-slate-500">No orders match the current filter criteria.</p>
     </div>
 
     <div v-else class="bg-white rounded-xl shadow-xl overflow-x-auto">
@@ -11497,12 +11637,14 @@ const handleDelete = async (ruleId) => {
           <th @click="store.setSort('processingStatus')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
             Status <span v-html="sortIcon('processingStatus')"></span>
           </th>
+          <th @click="store.setSort('latestErrorMessage')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
+            Error Message <span v-html="sortIcon('latestErrorMessage')"></span>
+          </th>
           <th @click="store.setSort('lastUpdatedAt')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
             Last Updated <span v-html="sortIcon('lastUpdatedAt')"></span>
           </th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Change Status
-          </th>
+            Actions </th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
             ID
           </th>
@@ -11519,13 +11661,16 @@ const handleDelete = async (ruleId) => {
           <td class="px-4 py-3 whitespace-nowrap text-sm">
             <StatusBadge :status="order.processingStatus" />
           </td>
+          <td class="px-4 py-3 text-xs text-red-700 font-mono max-w-xs truncate" :title="order.latestErrorMessage">
+            {{ order.latestErrorMessage }}
+          </td>
           <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDate(order.updatedAt) }}</td>
           <td class="px-4 py-3 whitespace-nowrap text-sm">
-            <div class="flex gap-2">
-              <select v-model="statusChange[order.id]" class="form-select">
+            <div class="flex gap-2 items-center">
+              <select v-model="statusChange[order.id]" class="form-select" title="Change status">
                 <option disabled value="">Select new status...</option>
-                <option v-for="status in allStatuses" :key="status" :value="status">
-                  {{ status }}
+                <option v-for="status in adminSelectableStatuses(order.processingStatus)" :key="status.value" :value="status.value">
+                  {{ status.label }}
                 </option>
               </select>
               <button
@@ -11534,6 +11679,13 @@ const handleDelete = async (ruleId) => {
                   class="button-secondary text-xs"
                   title="Apply status change">
                 Apply
+              </button>
+              <button
+                  @click="handleDelete(order.id, order.barcode)"
+                  :disabled="store.loading"
+                  class="button-danger text-xs"
+                  title="Delete this order">
+                Del
               </button>
             </div>
           </td>
@@ -11573,7 +11725,6 @@ import { useToast } from '@/composables/useToast';
 const store = useAdminOrderStore();
 const toast = useToast();
 
-// Statuses from the backend enum
 const allStatuses = [
   "INGESTED",
   "AWAITING_ALIAS_CHECK",
@@ -11586,12 +11737,25 @@ const allStatuses = [
   "FAILED"
 ];
 
-// Local state for the dropdowns, keyed by order ID
+const adminStatusOptions = [
+  { value: "PENDING_VERIFICATION", label: "Reset to Pending Review" },
+  { value: "FAILED", label: "Mark as Failed" },
+  { value: "ACK_TRACKIT", label: "Mark as Completed (ACK_TRACKIT)" },
+];
+
 const statusChange = ref({});
 
 onMounted(() => {
-  store.fetchAllOrders();
+  store.applyFilters();
 });
+
+const adminSelectableStatuses = (currentStatus) => {
+  return adminStatusOptions.filter(opt => {
+    if (opt.value === currentStatus) return false;
+    if (opt.value === "PENDING_VERIFICATION" && currentStatus === "PENDING_VERIFICATION") return false;
+    return true;
+  });
+};
 
 const handleChangeStatus = (orderId) => {
   const newStatus = statusChange.value[orderId];
@@ -11602,11 +11766,18 @@ const handleChangeStatus = (orderId) => {
 
   if (confirm(`Are you sure you want to change status for order ${orderId} to ${newStatus}?`)) {
     store.changeOrderStatus(orderId, newStatus).then(() => {
-      // Clear the dropdown selection for this row on success
       statusChange.value[orderId] = "";
     });
   }
 };
+
+// *** ADDED: Delete handler ***
+const handleDelete = (orderId, barcode) => {
+  if (confirm(`Are you sure you want to PERMANENTLY DELETE order ${barcode} (ID: ${orderId})?\n\nThis action cannot be undone.`)) {
+    store.deleteOrder(orderId, barcode);
+  }
+};
+// *** END ADDED ***
 
 const sortIcon = (field) => {
   if (store.sort.field === field) {
@@ -11630,26 +11801,62 @@ const formatDate = (dateString) => {
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   background-color: #fff;
+  flex-shrink: 1; /* Allow select to shrink */
+}
+
+.button-primary, .button-secondary, .button-danger {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.button-primary {
+  background-color: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+.button-primary:hover:not(:disabled) {
+  background-color: #004a9c;
 }
 
 .button-secondary {
-  padding: 0.5rem 0.75rem;
   background-color: #f3f4f6;
   color: #374151;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  transition: background-color 0.2s ease;
+  border-color: #d1d5db;
 }
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb;
 }
-.button-secondary:disabled {
+
+/* *** ADDED: Danger button style *** */
+.button-danger {
+  background-color: #fef2f2; /* red-50 */
+  color: #b91c1c; /* red-700 */
+  border-color: #fecaca; /* red-300 */
+}
+.button-danger:hover:not(:disabled) {
+  background-color: #fee2e2; /* red-100 */
+  color: #991b1b; /* red-800 */
+}
+/* *** END ADDED *** */
+
+
+.button-primary:disabled, .button-secondary:disabled, .button-danger:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 .text-xs {
   font-size: 0.75rem;
+}
+.max-w-xs {
+  max-width: 20rem; /* 320px */
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
 
@@ -11909,7 +12116,8 @@ export class Address {
 // ============================================================================
 // Frontend: Update WorklistFilter Domain (Supersedes previous version)
 // FILE: src/domain/WorklistFilter.js
-// REASON: Align default status with canonical mission state 'PENDING_VERIFICATION'.
+// REASON: Align default status with new "ALL_ACTIONABLE" logic to show
+//         both PENDING_VERIFICATION and FAILED orders by default.
 // ============================================================================
 // FILE: src/domain/WorklistFilter.js (Supersedes previous version)
 
@@ -11918,16 +12126,16 @@ export class Address {
  * Odpowiada za serializację filtrów do parametrów URL.
  * Separuje szczegóły filtrowania od komponentów UI oraz usług sieciowych.
  * ENHANCED: Added status, barcode, customerId, dateFrom, dateTo fields.
- * UPDATED: Changed default status to PENDING_VERIFICATION.
+ * UPDATED: Changed default status to ALL_ACTIONABLE.
  */
 export class WorklistFilter {
   // *** MODIFIED: Added constructor parameters and properties ***
-  constructor({ status = 'PENDING_VERIFICATION', barcode = '', customerId = '', dateFrom = '', dateTo = '' } = {}) {
-    this.status = status || 'PENDING_VERIFICATION'; // Default status aligned
+  constructor({ status = 'ALL_ACTIONABLE', barcode = '', customerId = '', dateFrom = '', dateTo = '' } = {}) {
+    this.status = status || 'ALL_ACTIONABLE'; // Default status aligned
     this.barcode = barcode || '';
     this.customerId = customerId || '';
     this.dateFrom = dateFrom || ''; // Expect YYYY-MM-DD
-    this.dateTo = dateTo || '';     // Expect YYYY-MM-DD
+    this.dateTo = dateTo || ''; // Expect YYYY-MM-DD
   }
   // *** END MODIFIED ***
 
@@ -12615,6 +12823,85 @@ export class AddressInputMaskService {
     maskHouseNo(value) {
         // TODO: Implement house number masking/formatting
         return value;
+    }
+}
+
+================================================================================
+### PLIK: services/AddressLookupService.js
+================================================================================
+
+// ============================================================================
+// Frontend: Update AddressLookupService
+// FILE: src/services/AddressLookupService.js
+// REASON: Change all methods from GET to POST to avoid WAF 403 errors.
+//         Use new AddressLookupRequestDTO body instead of query params.
+// ============================================================================
+import apiClient from '@/services/api.js';
+
+/**
+ * ARCHITECTURE: Frontend service to call the backend's AddressLookupController.
+ * This fetches suggestions for streets, postals, and cities.
+ * UPDATED: Now uses POST with a body to avoid WAF 403 errors.
+ */
+export class AddressLookupService {
+    constructor(client = apiClient) {
+        this.api = client;
+    }
+
+    /**
+     * Fetches street suggestions based on postal code and city.
+     * @param {string} postalCode
+     * @param {string} city
+     * @returns {Promise<Array<{value: string, latitude: number, longitude: number}>>}
+     */
+    async findStreets(postalCode, city) {
+        if (!postalCode || !city) return [];
+        try {
+            // *** CHANGED to POST ***
+            const payload = { postalCode, city };
+            const response = await this.api.post(`/api/address-lookup/streets`, payload);
+            return response.data || [];
+        } catch (error) {
+            console.error(`[AddressLookupService] Failed to findStreets for ${postalCode}, ${city}:`, error);
+            throw new Error(`Failed to fetch street suggestions: ${error.response?.data?.error || error.message}`);
+        }
+    }
+
+    /**
+     * Fetches postal code suggestions based on street and city.
+     * @param {string} street
+     * @param {string} city
+     * @returns {Promise<Array<{value: string, latitude: number, longitude: number}>>}
+     */
+    async findPostalCodes(street, city) {
+        if (!street || !city) return [];
+        try {
+            // *** CHANGED to POST ***
+            const payload = { street, city };
+            const response = await this.api.post(`/api/address-lookup/postalcodes`, payload);
+            return response.data || [];
+        } catch (error) {
+            console.error(`[AddressLookupService] Failed to findPostalCodes for ${street}, ${city}:`, error);
+            throw new Error(`Failed to fetch postal code suggestions: ${error.response?.data?.error || error.message}`);
+        }
+    }
+
+    /**
+     * Fetches city suggestions based on postal code.
+     * @param {string} postalCode
+     * @returns {Promise<Array<{value: string, latitude: number, longitude: number}>>}
+     */
+    async findCities(postalCode) {
+        if (!postalCode) return [];
+        try {
+            // *** CHANGED to POST ***
+            const payload = { postalCode };
+            const response = await this.api.post(`/api/address-lookup/cities`, payload);
+            return response.data || [];
+        } catch (error) {
+            console.error(`[AddressLookupService] Failed to findCities for ${postalCode}:`, error);
+            throw new Error(`Failed to fetch city suggestions: ${error.response?.data?.error || error.message}`);
+        }
     }
 }
 
@@ -14791,6 +15078,8 @@ export class EditorRouteGuard {
 // Frontend ➜ router/index.js (Final Version)
 // REASON: Ensure GeoRuntime is passed, guards are correctly instantiated and used.
 // REASON (REQ 2): Add new route for OrderAdminView.
+// REASON (FIX): Remove deprecated AuthSessionService and use Pinia authStore
+//               as the single source of truth for all auth checks (isAuthenticated and isAdmin).
 // ============================================================================
 // FILE: src/router/index.js
 
@@ -14803,23 +15092,25 @@ import LogDashboardView from "@/views/LogDashboardView.vue";
 import AedAdminView from "@/views/AedAdminView.vue";
 import HubRulesView from "@/views/HubRulesView.vue";
 import AddressUploadView from "@/views/AddressUploadView.vue";
-import OrderAdminView from "@/views/admin/OrderAdminView.vue"; // *** ADDED (REQ 2) ***
+import OrderAdminView from "@/views/admin/OrderAdminView.vue";
+// *** ADDED (REQ 2) ***
 import { AuthGuard } from "@/router/AuthGuard";
 import { EditorRouteGuard } from "@/router/EditorRouteGuard";
-import { AuthSessionService } from "@/services/AuthSessionService";
+// *** REMOVED: import { AuthSessionService } from "@/services/AuthSessionService"; ***
+import { useAuthStore } from "@/stores/authStore"; // *** ADDED: Import Pinia store ***
 
 /**
  * ARCHITECTURE: Creates the Vue Router with guards for authentication and editor prerequisites.
  * REFACTORED: Added routes for Hub Rules, Address Upload, AED SFTP Admin. Corrected admin role check.
  * UPDATED (REQ 2): Added new admin route for /admin/orders.
+ * UPDATED (FIX): Removed AuthSessionService dependency, now uses Pinia store (useAuthStore) directly.
  */
 export function createRouter(geoRuntime) { // GeoRuntime must be passed from main.js
   if (!geoRuntime) throw new Error("createRouter requires a GeoRuntime instance.");
 
   const editorGuard = new EditorRouteGuard(geoRuntime);
   const authGuard = new AuthGuard();
-  const authSession = new AuthSessionService();
-  // For role checking
+  // *** REMOVED: const authSession = new AuthSessionService(); ***
 
   const routes = [
     { path: "/", redirect: "/login" },
@@ -14883,8 +15174,10 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
     {
       path: "/:pathMatch(.*)*",
       redirect: to => {
-        // Use session service to check current auth state without async call
-        return authSession.isAuthenticated() ? '/dashboard' : '/login';
+        // *** FIX: Get store inside redirect function ***
+        const authStore = useAuthStore();
+        // *** FIX: Use Pinia store for check ***
+        return authStore.isAuthenticated ? '/dashboard' : '/login';
       }
     },
   ];
@@ -14896,10 +15189,13 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
 
   // Global Navigation Guard
   router.beforeEach(async (to, from, next) => {
+    // *** FIX: Get Pinia store instance inside the hook ***
+    const authStore = useAuthStore();
+
     // 1. Skip auth checks for the login page itself
     if (to.path === '/login') {
-      // If already authenticated, redirect away from login to dashboard
-      if (authSession.isAuthenticated()) {
+      // *** FIX: Use Pinia store for check ***
+      if (authStore.isAuthenticated) {
         next('/dashboard');
       } else {
         next(); // Allow access to login if not authenticated
@@ -14910,12 +15206,13 @@ export function createRouter(geoRuntime) { // GeoRuntime must be passed from mai
     // 2. Check if the route requires authentication
     if (to.meta.requiresAuth || to.meta.requiresAdmin) {
       try {
-        // Verify authentication using the AuthGuard
+        // Verify authentication using the AuthGuard (which now uses the Pinia store)
         await authGuard.canEnter(to); // This throws if not authenticated
 
         // 3. Check for Admin role if required
-        if (to.meta.requiresAdmin && !authSession.hasRole('ADMIN')) {
-          console.warn("AuthGuard: Admin role required for", to.path, ". User roles:", authSession.getUser()?.roles, "Redirecting to dashboard.");
+        // *** FIX: Use Pinia store's getter (isAdmin) for role check ***
+        if (to.meta.requiresAdmin && !authStore.isAdmin) {
+          console.warn("AuthGuard: Admin role required for", to.path, ". User roles:", authStore.user?.roles || '[]', "Redirecting to dashboard.");
           next("/dashboard"); // Redirect non-admins trying to access admin pages
           return;
         }
