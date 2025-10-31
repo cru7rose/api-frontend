@@ -23,14 +23,6 @@
         </div>
       </header>
 
-      <div class="editor-map bg-white shadow-md rounded-lg p-4">
-        <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
-        <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
-          <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-          <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-        </div>
-      </div>
-
       <div class="editor-columns grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         <div class="address-column bg-white shadow-md rounded-lg space-y-4">
@@ -99,6 +91,15 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="editor-map bg-white shadow-md rounded-lg p-4">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Map Preview</h3>
+        <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
+        <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
+          <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+          <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
         </div>
       </div>
 
