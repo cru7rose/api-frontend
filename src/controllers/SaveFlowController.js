@@ -2,8 +2,8 @@
 // Frontend: REWRITE SaveFlowController (Final Version)
 // FILE: src/controllers/SaveFlowController.js
 // REASON: Implement new save logic.
-//         - Build corrected OrderEvent JSON from original.
-//         - Build OrderCorrectionRequestDTO with 'applyToSimilar' flag.
+//         - Build OrderCorrectionRequestDTO from editor state.
+//         - Build ResubmitRequestDto with 'applyToSimilar' flag.
 //         - Call new api.saveApproval endpoint.
 // ============================================================================
 // FILE: src/controllers/SaveFlowController.js
@@ -51,7 +51,8 @@ export class SaveFlowController {
         snap.editor?.editedDelivery,
         applyToSimilar
     );
-// 2. Call the new API endpoint
+
+    // 2. Call the new API endpoint
     log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, ApplySimilar: ${applyToSimilar}`);
     const saveResult = await this.api.saveApproval(barcode, correctionDto);
 

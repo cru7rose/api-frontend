@@ -1,134 +1,134 @@
 <template>
   <div class="correction-editor-view p-4 md:p-6 bg-gray-100 min-h-full">
-    <div v/if="state.loading" class="loading-indicator text-center py-20">
-    <p class="text-lg font-medium text-gray-600">Loading order details...</p>
-  </div>
-  <div v-else-if="state.error" class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-    <strong class="font-bold">Failed to load order details:</strong>
-    <span class="block sm:inline">{{ state.error }}</span>
-    <span v-if="orderId"> (ID: {{ orderId }})</span>
-  </div>
-
-  <div
-      v-else-if="state.detail" class="editor-layout space-y-6">
-    <header class="editor-header bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
-      <div>
-        <h2 class="text-xl font-bold text-gray-800">
-          Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
-        </h2>
-        <p class="text-sm text-gray-500">
-          Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
-          Status: <StatusBadge :status="state.detail.processingStatus" />
-        </p>
-      </div>
-    </header>
-
-    <div class="editor-map bg-white shadow-md rounded-lg p-4">
-      <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
-      <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
-        <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
-        <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
-      </div>
+    <div v-if="state.loading" class="loading-indicator text-center py-20">
+      <p class="text-lg font-medium text-gray-600">Loading order details...</p>
+    </div>
+    <div v-else-if="state.error" class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+      <strong class="font-bold">Failed to load order details:</strong>
+      <span class="block sm:inline">{{ state.error }}</span>
+      <span v-if="orderId"> (ID: {{ orderId }})</span>
     </div>
 
-    <div class="editor-columns grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div
+        v-else-if="state.detail" class="editor-layout space-y-6">
+      <header class="editor-header bg-white shadow-md rounded-lg p-4 flex justify-between items-center">
+        <div>
+          <h2 class="text-xl font-bold text-gray-800">
+            Correction Editor (Barcode: <span class="text-blue-600 font-mono">{{ state.detail.barcode }}</span>)
+          </h2>
+          <p class="text-sm text-gray-500">
+            Source: <span class="font-medium text-gray-700">{{ state.detail.sourceSystem }}</span> |
+            Status: <StatusBadge :status="state.detail.processingStatus" />
+          </p>
+        </div>
+      </header>
 
-      <div class="address-column bg-white shadow-md rounded-lg space-y-4">
-        <AddressDisplay
-            title="Original Pickup"
-            :address="state.detail.originalPickup"
-            :alias="state.detail.originalPickup.alias"
-
-        />
-        <SuggestionList
-            title="Pickup Suggestions"
-            :suggestions="state.detail.suggestedPickup"
-            @accept="handleAcceptSuggestion('pickup', $event)"
-        />
-        <AddressForm
-            side="pickup"
-
-            :initialAddress="state.editedPickup"
-            :placesAdapter="placesAdapter"
-            @update="handleFormUpdate"
-        />
-        <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
-          <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
-          <div class="flex gap-2">
-            <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
-              {{ state.geocodeLoading ?
-                'Geocoding...' : 'Geocode Edited' }}
-            </button>
-            <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-              {{ state.saveLoading ?
-                'Saving...' : 'Save & Next (Pickup)' }}
-            </button>
-          </div>
+      <div class="editor-map bg-white shadow-md rounded-lg p-4">
+        <div ref="mapContainer" class="map-container-element h-64 md:h-80 w-full rounded-md border border-gray-200"></div>
+        <div v-if="routeInfo" class="route-info text-center text-sm text-gray-600 mt-2">
+          <strong>Distance:</strong> {{ (routeInfo.distance / 1000).toFixed(2) }} km |
+          <strong>Duration:</strong> {{ (routeInfo.duration / 60).toFixed(0) }} minutes
         </div>
       </div>
 
-      <div class="address-column bg-white shadow-md rounded-lg space-y-4">
-        <AddressDisplay
-            title="Original Delivery"
-            :address="state.detail.originalDelivery"
-            :alias="state.detail.originalDelivery.alias"
+      <div class="editor-columns grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        />
-        <SuggestionList
-            title="Delivery Suggestions"
-            :suggestions="state.detail.suggestedDelivery"
-            @accept="handleAcceptSuggestion('delivery', $event)"
-        />
-        <AddressForm
-            side="delivery"
+        <div class="address-column bg-white shadow-md rounded-lg space-y-4">
+          <AddressDisplay
+              title="Original Pickup"
+              :address="state.detail.originalPickup"
+              :alias="state.detail.originalPickup.alias"
 
-            :initialAddress="state.editedDelivery"
-            :placesAdapter="placesAdapter"
-            @update="handleFormUpdate"
-        />
-        <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
-          <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
-          <div class="flex gap-2">
-            <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
-
-              {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
-            </button>
-            <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
-              {{ state.saveLoading ?
-                'Saving...' : 'Save & Next (Delivery)' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <footer class="editor-footer bg-white shadow-md rounded-lg p-4 flex justify-between items-center" v-if="isPending">
-      <div class="bulk-toggle">
-        <label for="applyToSimilar" class="flex items-center cursor-pointer">
-          <input
-              id="applyToSimilar"
-              type="checkbox"
-
-              v-model="applyToSimilar"
-              class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
           />
-          <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
-        </label>
-      </div>
-      <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
-        {{ state.saveLoading ?
-          'Saving...' : 'Save Both & Go to Next' }}
-      </button>
-    </footer>
-    <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
-      <p class="font-medium text-yellow-800">
-        This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected.
-        (Current Status:
-        <StatusBadge :status="state.detail.processingStatus" />)
-      </p>
-    </footer>
+          <SuggestionList
+              title="Pickup Suggestions"
+              :suggestions="state.detail.suggestedPickup"
+              @accept="handleAcceptSuggestion('pickup', $event)"
+          />
+          <AddressForm
+              side="pickup"
 
-  </div>
+              :initialAddress="state.editedPickup"
+              :placesAdapter="placesAdapter"
+              @update="handleFormUpdate"
+          />
+          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+            <button @click="handleUseOriginal('pickup')" class="button-secondary">Use Original</button>
+            <div class="flex gap-2">
+              <button @click="handleGeocode('pickup')" :disabled="state.geocodeLoading" class="button-secondary">
+                {{ state.geocodeLoading ?
+                  'Geocoding...' : 'Geocode Edited' }}
+              </button>
+              <button @click="handleSave('pickup')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Pickup)' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="address-column bg-white shadow-md rounded-lg space-y-4">
+          <AddressDisplay
+              title="Original Delivery"
+              :address="state.detail.originalDelivery"
+              :alias="state.detail.originalDelivery.alias"
+
+          />
+          <SuggestionList
+              title="Delivery Suggestions"
+              :suggestions="state.detail.suggestedDelivery"
+              @accept="handleAcceptSuggestion('delivery', $event)"
+          />
+          <AddressForm
+              side="delivery"
+
+              :initialAddress="state.editedDelivery"
+              :placesAdapter="placesAdapter"
+              @update="handleFormUpdate"
+          />
+          <div class="column-actions flex justify-between items-center p-4 border-t border-gray-100">
+            <button @click="handleUseOriginal('delivery')" class="button-secondary">Use Original</button>
+            <div class="flex gap-2">
+              <button @click="handleGeocode('delivery')" :disabled="state.geocodeLoading" class="button-secondary">
+
+                {{ state.geocodeLoading ? 'Geocoding...' : 'Geocode Edited' }}
+              </button>
+              <button @click="handleSave('delivery')" :disabled="state.saveLoading || !isPending" class="button-primary" :title="!isPending ? 'Order is not pending verification' : 'Save and load next'">
+                {{ state.saveLoading ?
+                  'Saving...' : 'Save & Next (Delivery)' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="editor-footer bg-white shadow-md rounded-lg p-4 flex justify-between items-center" v-if="isPending">
+        <div class="bulk-toggle">
+          <label for="applyToSimilar" class="flex items-center cursor-pointer">
+            <input
+                id="applyToSimilar"
+                type="checkbox"
+
+                v-model="applyToSimilar"
+                class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span class="ml-2 text-sm font-medium text-gray-700">Apply this correction to all similar pending errors</span>
+          </label>
+        </div>
+        <button @click="handleSave('both')" :disabled="state.saveLoading" class="button-primary button-lg">
+          {{ state.saveLoading ?
+            'Saving...' : 'Save Both & Go to Next' }}
+        </button>
+      </footer>
+      <footer v-else class="editor-footer bg-yellow-50 border border-yellow-300 rounded-lg p-4 text-center">
+        <p class="font-medium text-yellow-800">
+          This order is not in a 'PENDING_VERIFICATION' state and cannot be corrected.
+          (Current Status:
+          <StatusBadge :status="state.detail.processingStatus" />)
+        </p>
+      </footer>
+
+    </div>
   </div>
 </template>
 
@@ -147,6 +147,8 @@ import StatusBadge from '@/components/common/StatusBadge.vue'; // Import StatusB
 import { MapController } from "@/controllers/MapController.js";
 import { EditorFacade } from "@/controllers/EditorFacade.js";
 import { SaveFlowController } from "@/controllers/SaveFlowController.js";
+// import { IdempotentSaveController } from "@/controllers/IdempotentSaveController.js";
+// DEPRECATED
 import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
 import { useWorklistStore } from '@/stores/WorklistStore.js';
 // To get the queue
@@ -208,9 +210,8 @@ onMounted(async () => {
   }
 
 
-  // 2.
-  Initialize Save Controllers
-  // *** FIX: Instantiate SaveFlowController correctly ***
+  // 2. Initialize Save Controllers
+// *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
@@ -471,32 +472,26 @@ const log = {
   transition: all 0.2s ease;
   cursor: pointer;
 }
-
 .button-primary {
   background-color: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
 }
-
 .button-primary:hover:not(:disabled) {
   background-color: #004a9c; /* Darker blue */
 }
-
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
   border-color: #d1d5db; /* gray-300 */
 }
-
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb; /* gray-200 */
 }
-
 .button-primary:disabled, .button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
 .button-lg {
   padding: 0.625rem 1.25rem;
   font-size: 1rem; /* 16px */

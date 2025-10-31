@@ -21,7 +21,7 @@ const formattedAddress = computed(() => {
   if (!props.address) return "N/A";
   try {
     // Create a copy for display, remove alias/name if it exists
-    const displayObj = {...props.address};
+    const displayObj = { ...props.address };
     delete displayObj.alias;
     delete displayObj.name;
 

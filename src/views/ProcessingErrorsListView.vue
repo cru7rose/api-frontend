@@ -12,6 +12,7 @@ const { errors, pagination, isLoading, error } = storeToRefs(errorStore);
 
 const currentSelectedErrorId = ref(null);
 const showModal = ref(false);
+
 // Local filter state (if you add filters)
 const localFilters = ref({
   barcode: '',
