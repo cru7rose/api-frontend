@@ -1,24 +1,22 @@
+<template>
+  <span class="badge" :class="badge.tone">
+    {{ badge.label }}
+  </span>
+</template>
+
 <script setup>
 import { computed } from 'vue';
 import { StatusBadgeViewModel } from '@/viewmodels/StatusBadgeViewModel';
-
 const props = defineProps({
   status: {
     type: String,
     default: 'UNKNOWN'
   }
 });
-
 const badge = computed(() => {
   return new StatusBadgeViewModel(props.status).toObject();
 });
 </script>
-
-<template>
-  <span class="badge" :class="badge.tone">
-    {{ badge.label }}
-  </span>
-</template>
 
 <style scoped>
 .badge {

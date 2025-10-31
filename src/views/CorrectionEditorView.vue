@@ -153,7 +153,8 @@ import { useToast } from '@/composables/useToast.js';
 import AddressDisplay from '@/components/AddressDisplay.vue';
 import AddressForm from '@/components/AddressForm.vue';
 import SuggestionList from '@/components/SuggestionList.vue';
-import StatusBadge from '@/components/common/StatusBadge.vue'; // Import StatusBadge
+import StatusBadge from '@/components/common/StatusBadge.vue';
+// Import StatusBadge
 
 // Import Manifesto architecture controllers
 import { MapController } from "@/controllers/MapController.js";
@@ -165,12 +166,10 @@ import { EditorCommandBus } from "@/controllers/EditorCommandBus.js";
 import { useWorklistStore } from '@/stores/WorklistStore.js';
 // To get the queue
 import { Address } from '@/domain/WorkbenchModels.js';
-
 // === Injections ===
 const orchestrator = inject("orchestrator");
 const geoRuntime = inject("geoRuntime");
 const toast = useToast();
-
 // === Route & Store ===
 const route = useRoute();
 const router = useRouter();
@@ -221,7 +220,8 @@ onMounted(async () => {
     placesAdapter.value = null;
   }
 
-  // 2. Initialize Save Controllers
+  // 2.
+  Initialize Save Controllers
   // *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
@@ -231,7 +231,6 @@ onMounted(async () => {
   // 3. Load Order Data (this will trigger the 'watch' block to init the map)
   await loadOrderData();
 });
-
 onUnmounted(() => {
   // Clean up map
   if (mapController) {
@@ -252,7 +251,8 @@ watch(mapContainer, async (newMapEl) => {
 
       log.info("MapController initialized and injected into facade.");
 
-      // Now draw the initial route (data is already loaded and geocoded)
+      // Now
+      draw the initial route (data is already loaded and geocoded)
       if (state.editedPickup && state.editedDelivery) {
         await editorFacade.preview.policy.showAndFitRoute(
             state.editedPickup,
@@ -264,7 +264,8 @@ watch(mapContainer, async (newMapEl) => {
       await refreshRouteInfo();
 
     } catch (err) {
-      log.error("Failed to initialize MapController in watch block:", err);
+      log.error("Failed to
+      initialize MapController in watch block:", err);
       toast.error("Failed to load map: " + err.message, 10000);
     }
   } else if (!newMapEl && mapController) {
@@ -291,7 +292,8 @@ async function loadOrderData() {
   // This load method now auto-geocodes if coords are missing
   const result = await editorFacade.load(orderId.value);
   if (result.ok) {
-    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+    // *** BUGFIX: Access root snapshot, not snapshot.editor ***
+    const snap = editorFacade.snapshot();
     state.detail = snap.detail;
     state.editedPickup = snap.editedPickup;
     state.editedDelivery = snap.editedDelivery;
@@ -365,7 +367,8 @@ function handleAcceptSuggestion(side, suggestionIndex) {
     commandBus.acceptDelivery(suggestionIndex);
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+  // *** BUGFIX: Access root snapshot, not snapshot.editor ***
+  const snap = editorFacade.snapshot();
   state.editedPickup = snap.editedPickup;
   state.editedDelivery = snap.editedDelivery;
 
@@ -378,22 +381,22 @@ function handleAcceptSuggestion(side, suggestionIndex) {
 async function handleGeocode(side) {
   state.geocodeLoading = true;
   toast.info(`Geocoding ${side} address...`, 2000);
-
   const result = await editorFacade.geocodeAndFocus(side);
   if (result.ok) {
-    const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+    // *** BUGFIX: Access root snapshot, not snapshot.editor ***
+    const snap = editorFacade.snapshot();
     if (side === 'pickup') {
       state.editedPickup = snap.editedPickup;
     } else {
       state.editedDelivery = snap.editedDelivery;
     }
     await editorFacade.refreshRoute();
-    // Redraw route
+// Redraw route
     await refreshRouteInfo(); // Get new stats
     toast.success('Geocoding successful. Address updated.', 3000);
   } else {
     log.error(`Geocode failed for ${side}:`, result.error);
-    // *** FIX: Show a warning if geocode was not found ***
+// *** FIX: Show a warning if geocode was not found ***
     if (result.error.message.includes("Geocode not found")) {
       toast.warn(`Geocoding failed: Address not found by Nominatim.`, 5000);
     } else {
@@ -410,7 +413,8 @@ function handleUseOriginal(side) {
     commandBus.useOriginalDelivery();
   }
   // Update local state from facade
-  const snap = editorFacade.snapshot(); // *** BUGFIX: Access root snapshot ***
+  // *** BUGFIX: Access root snapshot, not snapshot.editor ***
+  const snap = editorFacade.snapshot();
   state.editedPickup = snap.editedPickup;
   state.editedDelivery = snap.editedDelivery;
 
@@ -437,13 +441,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
+        router.push({name: 'worklist'});
       }
     } else {
       throw result.error;
@@ -486,26 +490,34 @@ const log = {
   transition: all 0.2s ease;
   cursor: pointer;
 }
+
 .button-primary {
   background-color: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
 }
+
 .button-primary:hover:not(:disabled) {
-  background-color: #004a9c; /* Darker blue */
+  background-color: #004a9c;
+  /* Darker blue */
 }
+
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
-  border-color: #d1d5db; /* gray-300 */
+  border-color: #d1d5db;
+  /* gray-300 */
 }
+
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb; /* gray-200 */
 }
+
 .button-primary:disabled, .button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
 .button-lg {
   padding: 0.625rem 1.25rem;
   font-size: 1rem; /* 16px */

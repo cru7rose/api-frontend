@@ -1,9 +1,10 @@
 // ============================================================================
 // Frontend: Add useToast.js
 // FILE: src/composables/useToast.js (NEW FILE - JS Version)
-// REASON: Provides toast notifications. Converted to JS for project consistency.
+// REASON: Provides toast notifications.
+Converted to JS for project consistency.
 // ============================================================================
-import { useToast as useVueToast } from 'vue-toastification'
+    import { useToast as useVueToast } from 'vue-toastification'
 
 /**
  * Custom composable for showing toasts.
@@ -20,7 +21,8 @@ export function useToast() {
         pauseOnHover: true,
         draggable: true,
         draggablePercent: 0.6,
-        showCloseButtonOnHover: false,
+        showCloseButtonOnHover:
+            false,
         hideProgressBar: false,
         closeButton: 'button',
         icon: true,
@@ -35,7 +37,8 @@ export function useToast() {
         toast.error(message, toastOptions(timeout))
     }
 
-    const info = (message, timeout = 3000) => {
+    const info = (message, timeout =
+    3000) => {
         toast.info(message, toastOptions(timeout))
     }
 
