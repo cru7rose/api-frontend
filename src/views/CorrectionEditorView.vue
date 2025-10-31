@@ -256,7 +256,7 @@ onMounted(async () => {
   // 2. Initialize Save Controllers
 // *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
-  saveFlow = new SaveFlowController(editorFacade, worklistStore);
+  saveFlow = new SaveFlowController(editorFacade);
   commandBus = new EditorCommandBus(editorFacade, saveFlow);
   // *** END FIX ***
 

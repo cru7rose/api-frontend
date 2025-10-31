@@ -7314,6 +7314,9 @@ export class SaveAndNextController {
 //         - Build OrderCorrectionRequestDTO from editor state.
 //         - Build ResubmitRequestDto with 'applyToSimilar' flag.
 //         - Call new api.saveApproval endpoint.
+//
+// **BUGFIX**: Correctly access `snap.orderId` and `snap.detail.barcode`
+//             instead of the incorrect `snap.editor.detail.barcode`.
 // ============================================================================
 // FILE: src/controllers/SaveFlowController.js
 import { Result } from "@/domain/Result";
@@ -7346,22 +7349,24 @@ export class SaveFlowController {
    */
   async saveThenAwait(side = "both", applyToSimilar = false) {
     const snap = this.editor.snapshot();
-    const orderId = snap.currentOrderId || snap.editor?.detail?.orderId || null;
-    const barcode = snap.editor?.detail?.barcode || null;
+
+    // *** CORRECTION: Access snapshot properties directly ***
+    const orderId = snap.orderId || null;
+    const barcode = snap.detail?.barcode || null;
+    // *** END CORRECTION ***
 
     if (!orderId || !barcode) {
-      log.error("[SaveFlow] Cannot save: Missing orderId or barcode in editor state.", snap.editor?.detail);
+      log.error("[SaveFlow] Cannot save: Missing orderId or barcode in editor state.", snap.detail); // Log snap.detail
       return Result.fail(new Error("SaveFlow: Cannot save, order data is missing."));
     }
 
     // 1. Build the OrderCorrectionRequestDTO
     const correctionDto = this._buildCorrectionPayload(
-        snap.editor?.editedPickup,
-        snap.editor?.editedDelivery,
+        snap.editedPickup, // Access corrected state from root of snap
+        snap.editedDelivery, // Access corrected state from root of snap
         applyToSimilar
     );
-
-    // 2. Call the new API endpoint
+// 2. Call the new API endpoint
     log.info(`[SaveFlow] Calling saveApproval for Barcode: ${barcode}, ApplySimilar: ${applyToSimilar}`);
     const saveResult = await this.api.saveApproval(barcode, correctionDto);
 
@@ -7408,6 +7413,7 @@ export class SaveFlowController {
           city: addrModel.city,
           // Country is removed
           latitude: addrModel.latitude,
+
           longitude: addrModel.longitude,
         }
       };

@@ -23,13 +23,13 @@ import { Address } from "@/domain/WorkbenchModels";
  * - It calls api.saveApproval() instead of the old /resubmit flow.
  */
 export class SaveFlowController {
-  constructor(editorFacade, queueService, api = new AddressExceptionApi()) {
+  constructor(editorFacade, api = new AddressExceptionApi()) { // queueService removed
     if (!editorFacade) throw new Error("SaveFlowController requires an EditorFacade.");
-    if (!queueService) throw new Error("SaveFlowController requires a QueueService.");
+    if (!editorFacade.queue) throw new Error("SaveFlowController requires the EditorFacade to have a 'queue' (OrdersQueueService) property."); // Validate it's on the facade
     if (!api) throw new Error("SaveFlowController requires an AddressExceptionApi.");
 
     this.editor = editorFacade;
-    this.queue = queueService;
+    this.queue = editorFacade.queue; // Get the correct queue from the facade
     this.api = api;
   }
 
