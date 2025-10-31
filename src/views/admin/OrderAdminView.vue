@@ -34,6 +34,9 @@
           <th @click="store.setSort('processingStatus')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
             Status <span v-html="sortIcon('processingStatus')"></span>
           </th>
+          <th @click="store.setSort('latestErrorMessage')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
+            Error Message <span v-html="sortIcon('latestErrorMessage')"></span>
+          </th>
           <th @click="store.setSort('lastUpdatedAt')" class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100">
             Last Updated <span v-html="sortIcon('lastUpdatedAt')"></span>
           </th>
@@ -55,6 +58,9 @@
           <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ order.sourceSystem }}</td>
           <td class="px-4 py-3 whitespace-nowrap text-sm">
             <StatusBadge :status="order.processingStatus" />
+          </td>
+          <td class="px-4 py-3 text-xs text-red-700 font-mono max-w-xs truncate" :title="order.latestErrorMessage">
+            {{ order.latestErrorMessage }}
           </td>
           <td class="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{{ formatDate(order.updatedAt) }}</td>
           <td class="px-4 py-3 whitespace-nowrap text-sm">
@@ -83,7 +89,7 @@
 
       <div class="py-3 px-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
         <div class="text-xs text-slate-600">
-          Page {{ store.pagination.currentPage + 1 }} / {{ store.pagination.totalPages }} ({{ store.pagination.totalItems }} orders)
+          Page {{ store.pagination.currentPage + 1 }} / {{ store.pagination.totalPages }} ({{ store.pagination.totalElements }} orders)
         </div>
         <div class="flex space-x-1.5">
           <button @click="store.setPage(store.pagination.currentPage - 1)" :disabled="store.pagination.currentPage === 0 || store.loading"
@@ -187,5 +193,13 @@ const formatDate = (dateString) => {
 }
 .text-xs {
   font-size: 0.75rem;
+}
+.max-w-xs {
+  max-width: 20rem; /* 320px */
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -1,7 +1,7 @@
 // ============================================================================
 // Frontend: Update WorklistStore (Supersedes previous version)
 // FILE: src/stores/WorklistStore.js
-// REASON: Align default status with canonical mission state 'PENDING_VERIFICATION'.
+// REASON: Align default status with new "ALL_ACTIONABLE" logic.
 // ============================================================================
 // FILE: src/stores/WorklistStore.js (Supersedes previous version)
 
@@ -9,16 +9,15 @@ import { defineStore } from 'pinia';
 import { WorklistFilter } from "@/domain/WorklistFilter";
 import { Result } from "@/domain/Result";
 import { AddressExceptionApi } from "@/services/AddressExceptionApi";
-
 /**
  * ARCHITECTURE: Pinia store for managing the state of the Address Exception Worklist.
- * REFACTORED: Default filter status set to PENDING_VERIFICATION.
+ * REFACTORED: Default filter status set to ALL_ACTIONABLE.
  */
 export const useWorklistStore = defineStore('worklist', {
     state: () => ({
-        // *** MODIFIED: Use PENDING_VERIFICATION ***
+        // *** MODIFIED: Use ALL_ACTIONABLE ***
         filter: new WorklistFilter({
-            status: 'PENDING_VERIFICATION',
+            status: 'ALL_ACTIONABLE',
             barcode: '',
             customerId: '',
             dateFrom: '', // YYYY-MM-DD
@@ -40,7 +39,8 @@ export const useWorklistStore = defineStore('worklist', {
             return state.selection.includes(orderId);
         },
         currentFilter: (state) => {
-            return state.filter.toPlainObject ? state.filter.toPlainObject() : { ...state.filter };
+            return state.filter.toPlainObject ?
+                state.filter.toPlainObject() : { ...state.filter };
         },
         currentPageInfo: (state) => {
             return { ...state.pagination };
@@ -62,17 +62,18 @@ export const useWorklistStore = defineStore('worklist', {
             try {
                 const filterParams = {
                     ...(this.filter.toQueryRecord ? this.filter.toQueryRecord() : this.filter),
-                    page: this.pagination.currentPage > 0 ? this.pagination.currentPage - 1 : 0,
+                    page: this.pagination.currentPage > 0 ?
+                        this.pagination.currentPage - 1 : 0,
                     size: this.pagination.itemsPerPage,
                 };
                 Object.keys(filterParams).forEach(key => (filterParams[key] == null || filterParams[key] === '') && delete filterParams[key]);
                 const result = await api.getWorklist(filterParams);
-
                 if (result.ok) {
                     this.items = result.value.items || [];
                     this.pagination.totalItems = result.value.total || 0;
                     this.pagination.totalPages = this.pagination.itemsPerPage > 0
-                        ? Math.ceil(this.pagination.totalItems / this.pagination.itemsPerPage) || 1
+                        ?
+                        Math.ceil(this.pagination.totalItems / this.pagination.itemsPerPage) || 1
                         : 1;
                     if (this.pagination.currentPage > this.pagination.totalPages) {
                         this.pagination.currentPage = this.pagination.totalPages;
@@ -101,9 +102,9 @@ export const useWorklistStore = defineStore('worklist', {
         },
 
         async resetFilter() {
-            // *** MODIFIED: Use PENDING_VERIFICATION ***
+            // *** MODIFIED: Use ALL_ACTIONABLE ***
             this.filter = new WorklistFilter({
-                status: 'PENDING_VERIFICATION',
+                status: 'ALL_ACTIONABLE',
                 barcode: '',
                 customerId: '',
                 dateFrom: '',

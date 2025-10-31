@@ -1,7 +1,8 @@
 // ============================================================================
 // Frontend: Update WorklistFilter Domain (Supersedes previous version)
 // FILE: src/domain/WorklistFilter.js
-// REASON: Align default status with canonical mission state 'PENDING_VERIFICATION'.
+// REASON: Align default status with new "ALL_ACTIONABLE" logic to show
+//         both PENDING_VERIFICATION and FAILED orders by default.
 // ============================================================================
 // FILE: src/domain/WorklistFilter.js (Supersedes previous version)
 
@@ -10,16 +11,16 @@
  * Odpowiada za serializację filtrów do parametrów URL.
  * Separuje szczegóły filtrowania od komponentów UI oraz usług sieciowych.
  * ENHANCED: Added status, barcode, customerId, dateFrom, dateTo fields.
- * UPDATED: Changed default status to PENDING_VERIFICATION.
+ * UPDATED: Changed default status to ALL_ACTIONABLE.
  */
 export class WorklistFilter {
   // *** MODIFIED: Added constructor parameters and properties ***
-  constructor({ status = 'PENDING_VERIFICATION', barcode = '', customerId = '', dateFrom = '', dateTo = '' } = {}) {
-    this.status = status || 'PENDING_VERIFICATION'; // Default status aligned
+  constructor({ status = 'ALL_ACTIONABLE', barcode = '', customerId = '', dateFrom = '', dateTo = '' } = {}) {
+    this.status = status || 'ALL_ACTIONABLE'; // Default status aligned
     this.barcode = barcode || '';
     this.customerId = customerId || '';
     this.dateFrom = dateFrom || ''; // Expect YYYY-MM-DD
-    this.dateTo = dateTo || '';     // Expect YYYY-MM-DD
+    this.dateTo = dateTo || ''; // Expect YYYY-MM-DD
   }
   // *** END MODIFIED ***
 
