@@ -209,9 +209,8 @@ onMounted(async () => {
     placesAdapter.value = null;
   }
 
-
-  // 2.
-  Initialize Save Controllers
+  // *** BUILD FIX: Merged broken comment ***
+// 2. Initialize Save Controllers
   // *** FIX: Instantiate SaveFlowController correctly ***
   // It now uses the corrected AddressExceptionApi logic internally
   saveFlow = new SaveFlowController(editorFacade, worklistStore);
@@ -235,7 +234,7 @@ watch(mapContainer, async (newMapEl) => {
     try {
       const mapAdapter = geoRuntime.mapAdapter();
       mapController = new MapController(mapAdapter);
-      await mapController.init(newMapEl, { lat: 52.23, lon: 21.01, zoom: 6 });
+      await mapController.init(newMapEl, {lat: 52.23, lon: 21.01, zoom: 6});
 
       // Inject the new mapController into the existing facade
       editorFacade = orchestrator.getEditor(mapController);
@@ -333,7 +332,7 @@ async function refreshRouteInfo() {
 function handleFormUpdate(side, field, value) {
   const target = side === 'pickup' ?
       state.editedPickup : state.editedDelivery;
-  const newAddress = new Address({ ...target, [field]: value });
+  const newAddress = new Address({...target, [field]: value});
   if (side === 'pickup') {
     state.editedPickup = newAddress;
     editorFacade.setManualPickup(newAddress);
@@ -424,13 +423,13 @@ async function handleSave(side) {
     if (result.ok) {
       if (result.value.nextOrderId) {
         toast.success("Save successful! Loading next order.", 3000);
-        router.push({ name: 'editor', params: { id: result.value.nextOrderId } });
+        router.push({name: 'editor', params: {id: result.value.nextOrderId}});
         // Reload data for the new ID
         orderId.value = result.value.nextOrderId;
         await loadOrderData();
       } else {
         toast.success("Save successful! No more orders in queue.", 4000);
-        router.push({ name: 'worklist' });
+        router.push({name: 'worklist'});
       }
     } else {
       throw result.error;
@@ -473,26 +472,32 @@ const log = {
   transition: all 0.2s ease;
   cursor: pointer;
 }
+
 .button-primary {
   background-color: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
 }
+
 .button-primary:hover:not(:disabled) {
   background-color: #004a9c; /* Darker blue */
 }
+
 .button-secondary {
   background-color: #f3f4f6; /* gray-100 */
   color: #374151; /* gray-700 */
   border-color: #d1d5db; /* gray-300 */
 }
+
 .button-secondary:hover:not(:disabled) {
   background-color: #e5e7eb; /* gray-200 */
 }
+
 .button-primary:disabled, .button-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
 .button-lg {
   padding: 0.625rem 1.25rem;
   font-size: 1rem; /* 16px */
