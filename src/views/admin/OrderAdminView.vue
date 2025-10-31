@@ -6,6 +6,78 @@
       Use with caution.
     </p>
 
+    <div class="filters-container bg-white rounded-xl shadow-lg p-4 mb-6">
+      <h2 class="text-lg font-semibold text-gray-700 mb-3">Filters</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+        <div class="form-group">
+          <label for="filter-barcode" class="form-label">Barcode</label>
+          <input
+              id="filter-barcode"
+              type="text"
+              v-model="store.filters.barcode"
+              placeholder="Filter by barcode..."
+              class="form-input"
+              @keyup.enter="store.applyFilters"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-source" class="form-label">Source System</label>
+          <input
+              id="filter-source"
+              type="text"
+              v-model="store.filters.source"
+              placeholder="e.g., API, WMS, CDC"
+              class="form-input"
+              @keyup.enter="store.applyFilters"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-status" class="form-label">Status</label>
+          <select id="filter-status" v-model="store.filters.status" class="form-input">
+            <option value="">All Statuses</option>
+            <option v-for="s in allStatuses" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filter-date-from" class="form-label">Ingested From</label>
+          <input
+              id="filter-date-from"
+              type="date"
+              v-model="store.filters.dateFrom"
+              class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="filter-date-to" class="form-label">Ingested To</label>
+          <input
+              id="filter-date-to"
+              type="date"
+              v-model="store.filters.dateTo"
+              class="form-input"
+          />
+        </div>
+
+      </div>
+      <div class="flex gap-3 mt-4 justify-end">
+        <button
+            @click="store.resetFilters"
+            :disabled="store.loading"
+            class="button-secondary">
+          Reset Filters
+        </button>
+        <button
+            @click="store.applyFilters"
+            :disabled="store.loading"
+            class="button-primary">
+          {{ store.loading ? 'Searching...' : 'Search' }}
+        </button>
+      </div>
+    </div>
     <div v-if="store.loading && !store.orders.length" class="text-center py-16">
       <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mx-auto"></div>
       <p class="text-lg text-slate-500 mt-5">Loading all orders...</p>
@@ -18,7 +90,7 @@
 
     <div v-else-if="!store.orders.length" class="text-center py-16 bg-white rounded-xl shadow-md">
       <h3 class="mt-3 text-lg font-medium text-slate-800">No Orders Found</h3>
-      <p class="mt-1 text-sm text-slate-500">The database contains no order shadow records.</p>
+      <p class="mt-1 text-sm text-slate-500">No orders match the current filter criteria.</p>
     </div>
 
     <div v-else class="bg-white rounded-xl shadow-xl overflow-x-auto">
@@ -116,26 +188,37 @@ import { useToast } from '@/composables/useToast';
 const store = useAdminOrderStore();
 const toast = useToast();
 
-// *** MODIFIED: Simplified list of logical admin actions ***
+// *** MODIFIED: This list contains *all* statuses for the filter dropdown ***
+const allStatuses = [
+  "INGESTED",
+  "AWAITING_ALIAS_CHECK",
+  "CDC_EVENT",
+  "HAPPY_PATH_MATCHED",
+  "PENDING_VERIFICATION",
+  "APPROVED",
+  "SENT_TO_TRACKIT",
+  "ACK_TRACKIT",
+  "FAILED"
+];
+
+// This list is for the *action* dropdown (Change Status)
 const adminStatusOptions = [
   { value: "PENDING_VERIFICATION", label: "Reset to Pending Review" },
   { value: "FAILED", label: "Mark as Failed" },
   { value: "ACK_TRACKIT", label: "Mark as Completed (ACK_TRACKIT)" },
 ];
 
-// Local state for the dropdowns, keyed by order ID
+// Local state for the action dropdowns, keyed by order ID
 const statusChange = ref({});
 
 onMounted(() => {
-  store.fetchAllOrders();
+  // Use applyFilters to load initial data, which respects any default filters
+  store.applyFilters();
 });
 
-// *** NEW FUNCTION: Filter list to only show logical next steps ***
 const adminSelectableStatuses = (currentStatus) => {
   return adminStatusOptions.filter(opt => {
-    // Don't show the option to set the status to what it already is
     if (opt.value === currentStatus) return false;
-    // Don't show "Reset to Pending" if it's already pending
     if (opt.value === "PENDING_VERIFICATION" && currentStatus === "PENDING_VERIFICATION") return false;
     return true;
   });
@@ -150,7 +233,6 @@ const handleChangeStatus = (orderId) => {
 
   if (confirm(`Are you sure you want to change status for order ${orderId} to ${newStatus}?`)) {
     store.changeOrderStatus(orderId, newStatus).then(() => {
-      // Clear the dropdown selection for this row on success
       statusChange.value[orderId] = "";
     });
   }
@@ -172,12 +254,41 @@ const formatDate = (dateString) => {
 
 <style scoped>
 /* Scoped styles */
-.form-select {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.875rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
+.form-input, .form-select {
+  padding: 0.5rem 0.75rem; /* 8px 12px */
+  font-size: 0.875rem; /* 14px */
+  border: 1px solid #d1d5db; /* gray-300 */
+  border-radius: 0.375rem; /* 6px */
   background-color: #fff;
+  width: 100%;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+.form-label {
+  display: block;
+  margin-bottom: 0.25rem; /* 4px */
+  font-size: 0.75rem; /* 12px */
+  font-weight: 500;
+  color: #4b5563; /* gray-600 */
+}
+
+.button-primary {
+  padding: 0.5rem 1rem;
+  background-color: var(--color-primary);
+  color: white;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+  border: 1px solid transparent;
+}
+.button-primary:hover:not(:disabled) {
+  background-color: #004a9c;
+}
+.button-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .button-secondary {

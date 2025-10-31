@@ -2,6 +2,7 @@
 // Frontend: New Store
 // FILE: src/stores/adminOrderStore.js (NEW FILE)
 // REASON: Implements Request 2: State management for the new Order Admin view.
+// REASON (UPDATE): Added reactive filters and logic to apply them.
 // ============================================================================
 import { defineStore } from 'pinia';
 import apiClient from '@/services/api';
@@ -21,6 +22,14 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         field: 'lastUpdatedAt',
         direction: 'DESC',
     });
+    // *** ADDED: Filters state ***
+    const filters = reactive({
+        barcode: '',
+        source: '',
+        status: '',
+        dateFrom: '',
+        dateTo: ''
+    });
     const loading = ref(false);
     const error = ref(null);
     const toast = useToast();
@@ -35,6 +44,14 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
             size: pagination.itemsPerPage,
             sort: `${sort.field},${sort.direction}`,
         });
+
+        // *** ADDED: Append filters to params ***
+        if (filters.barcode) params.set('barcode', filters.barcode);
+        if (filters.source) params.set('source', filters.source);
+        if (filters.status) params.set('status', filters.status);
+        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+        if (filters.dateTo) params.set('dateTo', filters.dateTo);
+        // *** END ADDED ***
 
         try {
             const response = await apiClient.get(`/api/admin/orders/all?${params.toString()}`);
@@ -60,16 +77,15 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         }
         loading.value = true;
         error.value = null;
-
         try {
             const response = await apiClient.post(`/api/admin/orders/${orderId}/status`, {
                 newStatus: newStatus,
             });
-
             // Update the single order in the list
             const index = orders.value.findIndex(o => o.id === orderId);
             if (index !== -1) {
-                orders.value[index] = response.data;
+                // Update the item in place to maintain reactivity
+                orders.value[index] = { ...orders.value[index], ...response.data };
             }
 
             toast.success(`Successfully updated status for order ${response.data.barcode} to ${newStatus}.`);
@@ -100,16 +116,36 @@ export const useAdminOrderStore = defineStore('adminOrder', () => {
         fetchAllOrders();
     }
 
+    // *** ADDED: Filter actions ***
+    function applyFilters() {
+        pagination.currentPage = 0;
+        fetchAllOrders();
+    }
+
+    function resetFilters() {
+        filters.barcode = '';
+        filters.source = '';
+        filters.status = '';
+        filters.dateFrom = '';
+        filters.dateTo = '';
+        applyFilters();
+    }
+    // *** END ADDED ***
+
+
     // --- Return Store ---
     return {
         orders,
         pagination,
         sort,
+        filters, // Expose filters
         loading,
         error,
         fetchAllOrders,
         changeOrderStatus,
         setPage,
         setSort,
+        applyFilters, // Expose action
+        resetFilters, // Expose action
     };
 });

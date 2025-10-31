@@ -2,6 +2,7 @@
   <div class="address-form p-4 border-t border-gray-100">
     <h3 class="text-sm font-semibold text-gray-700 mb-3">{{ sideLabel }}</h3>
 
+
     <div class="form-group mb-3">
 
       <label :for="`${side}-alias`" class="block text-xs font-medium text-gray-600 mb-1">Alias</label>
@@ -15,6 +16,7 @@
           disabled
       />
 
+
     </div>
 
     <div class="form-grid grid grid-cols-2 gap-x-4 gap-y-3">
@@ -26,18 +28,16 @@
             type="text"
             :value="addressModelValue?.street"
             @input="handleInput('street', $event.target.value)"
-
             @focus="handleFocus('street')"
             @blur="hideSuggestions"
-
+            @keydown="handleKeydown"
             autocomplete="off"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'street'" class="suggestions-dropdown" ref="streetSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length
-=== 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Postal/City.</li>
           <li
               v-for="(suggestion, index) in
 suggestions"
@@ -45,7 +45,6 @@ suggestions"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="activeSuggestionIndex = index"
-
               class="suggestion-item"
           >
             {{ formatSuggestion(suggestion) }}
@@ -58,7 +57,6 @@ suggestions"
         <label :for="`${side}-houseNumber`" class="block text-xs font-medium text-gray-600 mb-1">House No.</label>
         <input
             :id="`${side}-houseNumber`"
-
             type="text"
             :value="addressModelValue?.houseNumber"
             @input="emitUpdate('houseNumber', $event.target.value)"
@@ -70,27 +68,22 @@ suggestions"
       <div class="form-group suggestion-group col-span-1">
         <label :for="`${side}-postalCode`" class="block text-xs font-medium text-gray-600 mb-1">Postal Code</label>
         <input
-
             :id="`${side}-postalCode`"
             type="text"
             :value="addressModelValue?.postalCode"
             @input="handleInput('postalCode', $event.target.value)"
             @focus="handleFocus('postalCode')"
             @blur="hideSuggestions"
-
             @keydown="handleKeydown"
             autocomplete="off"
-
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'postalCode'" class="suggestions-dropdown" ref="postalSuggestionsRef">
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Street/City.</li>
           <li
-
               v-for="(suggestion, index) in suggestions"
-
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
               @mousedown.prevent="selectSuggestion(suggestion)"
@@ -98,7 +91,6 @@ suggestions"
               class="suggestion-item"
           >
             {{
-
               formatSuggestion(suggestion) }}
           </li>
         </ul>
@@ -110,9 +102,7 @@ suggestions"
             :id="`${side}-city`"
             type="text"
             :value="addressModelValue?.city"
-
             @input="handleInput('city', $event.target.value)"
-
             @focus="handleFocus('city')"
             @blur="hideSuggestions"
             @keydown="handleKeydown"
@@ -120,18 +110,14 @@ suggestions"
             class="form-input"
         />
         <ul v-if="showSuggestions && activeField === 'city'" class="suggestions-dropdown" ref="citySuggestionsRef">
-
           <li v-if="suggestionsLoading" class="suggestion-item-info">Loading...</li>
           <li v-else-if="suggestionsError" class="suggestion-item-error">{{ suggestionsError }}</li>
-
-          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">No suggestions found.</li>
+          <li v-else-if="suggestions.length === 0" class="suggestion-item-info">Type to search, or check Postal Code.</li>
           <li
               v-for="(suggestion, index) in suggestions"
               :key="index"
               :class="{ active: activeSuggestionIndex === index }"
-
               @mousedown.prevent="selectSuggestion(suggestion)"
-
               @mouseenter="activeSuggestionIndex = index"
               class="suggestion-item"
           >
@@ -141,17 +127,14 @@ suggestions"
       </div>
 
       <div class="form-group col-span-2">
-
         <label :for="`${side}-country`" class="block text-xs font-medium text-gray-600 mb-1">Country</label>
         <input
             :id="`${side}-country`"
             type="text"
-
             :value="addressModelValue?.country"
             @input="emitUpdate('country', $event.target.value)"
             maxlength="2"
             class="form-input"
-
         />
       </div>
 
@@ -160,11 +143,9 @@ suggestions"
         <input
             :id="`${side}-latitude`"
             type="number"
-
             step="any"
             :value="addressModelValue?.latitude"
-            @input="emitUpdate('latitude', $event.target.value ?
-parseFloat($event.target.value) : null)"
+            @input="emitUpdate('latitude', $event.target.value ? parseFloat($event.target.value) : null)"
             class="form-input"
         />
       </div>
@@ -175,9 +156,7 @@ parseFloat($event.target.value) : null)"
             :id="`${side}-longitude`"
             type="number"
             step="any"
-
             :value="addressModelValue?.longitude"
-
             @input="emitUpdate('longitude', $event.target.value ? parseFloat($event.target.value) : null)"
             class="form-input"
         />
@@ -188,7 +167,8 @@ parseFloat($event.target.value) : null)"
 
 <script setup>
 import { ref, computed, reactive, watch, onUnmounted, nextTick } from 'vue';
-import { AddressExceptionApi } from '@/services/AddressExceptionApi';
+// *** MODIFIED: Import the correct service ***
+import { AddressLookupService } from '@/services/AddressLookupService';
 import { DebounceTimer } from '@/services/DebounceTimer';
 
 const props = defineProps({
@@ -197,17 +177,17 @@ const props = defineProps({
     required: true,
   },
   initialAddress: {
-
     type: Object,
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
-
-  placesAdapter: {
-    type: Object,
-    default: null,
-  },
+  // *** REMOVED: placesAdapter is no longer needed ***
+  // placesAdapter: {
+  //   type: Object,
+  //   default: null,
+  // },
 });
 const emit = defineEmits(['update']);
+
 // --- State ---
 const suggestions = ref([]);
 const showSuggestions = ref(false);
@@ -215,34 +195,55 @@ const suggestionsLoading = ref(false);
 const suggestionsError = ref(null);
 const activeField = ref(null);
 const activeSuggestionIndex = ref(-1);
-const activeSuggestionSource = ref('none');
-// 'google' or 'backend'
+const activeSuggestionSource = ref('backend'); // We only have one source now
 
-// *** BUGFIX: Remove broken API dependency ***
-// const api = new AddressExceptionApi();
-const placesDebouncer = new DebounceTimer(400); // Debounce for Google API calls
-// const backendDebouncer = new DebounceTimer(300);
-// REMOVED
+// *** MODIFIED: Use AddressLookupService and a single debouncer ***
+const lookupService = new AddressLookupService();
+const debouncer = new DebounceTimer(300); // Debounce for backend calls
 
 const addressModelValue = computed(() => props.initialAddress);
 const sideLabel = computed(() => "Edit " + props.side.charAt(0).toUpperCase() + props.side.slice(1));
-const localPlacesAdapter = ref(props.placesAdapter);
 
-// --- Watch for adapter prop ---
-watch(() => props.placesAdapter, (newAdapter) => {
-  localPlacesAdapter.value = newAdapter;
-  if(newAdapter) console.log(`Google Places Adapter received in AddressForm (${props.side}).`);
-});
+// *** REMOVED: Watch for placesAdapter ***
+
 // --- Suggestion Fetching Logic ---
 
-const fetchGoogleSuggestions = async (field, value) => {
-  if (!localPlacesAdapter.value || !value || value.length < 3) {
+// *** MODIFIED: This function now calls the AddressLookupService ***
+const fetchSuggestions = async (field, typedValue) => {
+  // Use the *current* state of the form for context
+  const addr = addressModelValue.value;
+  if (!addr) return;
+
+  // Only show suggestions if we have the necessary context
+  const hasPostal = addr.postalCode && addr.postalCode.length > 2;
+  const hasCity = addr.city && addr.city.length > 2;
+  const hasStreet = addr.street && addr.street.length > 2;
+
+  // Do not fetch if crucial context is missing for the given field
+  if (field === 'street' && (!hasPostal || !hasCity)) {
+    suggestions.value = [];
+    showSuggestions.value = true; // Show "Type to search..." message
+    return;
+  }
+  if (field === 'postalCode' && (!hasStreet || !hasCity)) {
+    suggestions.value = [];
+    showSuggestions.value = true;
+    return;
+  }
+  if (field === 'city' && !hasPostal) {
     suggestions.value = [];
     showSuggestions.value = true;
     return;
   }
 
-  activeSuggestionSource.value = 'google';
+  // Guard against searching on every keystroke if context is missing
+  if (typedValue && typedValue.length < 2 && field !== 'city') {
+    suggestions.value = [];
+    showSuggestions.value = true;
+    return;
+  }
+
+  activeSuggestionSource.value = 'backend';
   activeField.value = field;
   activeSuggestionIndex.value = -1;
   suggestionsLoading.value = true;
@@ -250,76 +251,72 @@ const fetchGoogleSuggestions = async (field, value) => {
   showSuggestions.value = true;
 
   try {
-    const query = value;
-    const countryCode = addressModelValue.value?.country ||
-        'PL';
-    const results = await localPlacesAdapter.value.suggest(query, countryCode);
-    suggestions.value = results || [];
+    if (field === 'street') {
+      suggestions.value = await lookupService.findStreets(addr.postalCode, addr.city);
+    } else if (field === 'postalCode') {
+      suggestions.value = await lookupService.findPostalCodes(addr.street, addr.city);
+    } else if (field === 'city') {
+      suggestions.value = await lookupService.findCities(addr.postalCode);
+    } else {
+      suggestions.value = [];
+    }
   } catch (e) {
-    suggestionsError.value = "Failed to fetch Google suggestions.";
-    console.error(`fetchGoogleSuggestions error (${props.side}):`, e);
+    suggestionsError.value = "Failed to fetch suggestions.";
+    console.error(`fetchSuggestions error (${props.side}):`, e);
     suggestions.value = [];
   } finally {
     suggestionsLoading.value = false;
   }
 };
-// *** BUGFIX: Remove broken backend suggestion logic ***
-// const fetchBackendSuggestions = ... (REMOVED)
 
 // --- Event Handlers ---
 
 const emitUpdate = (field, value) => {
   emit('update', props.side, field, value);
 };
+
 const handleInput = (field, value) => {
   emitUpdate(field, value);
-// Trigger Google Places (debounced) as primary suggestion source on type
+
+  // *** MODIFIED: Use backend debouncer ***
   if (field === 'street' || field === 'city' || field === 'postalCode') {
-    placesDebouncer.run(() => fetchGoogleSuggestions(field, value));
+    debouncer.run(() => fetchSuggestions(field, value));
   } else {
     // Clear suggestions for other fields
     hideSuggestions();
-    placesDebouncer.cancel();
-    // backendDebouncer.cancel();
-// REMOVED
+    debouncer.cancel();
   }
 };
+
 const handleFocus = (field) => {
-  // Hide any other open dropdowns
-  hideSuggestions();
-// Set active field for keyboard nav and context
+  hideSuggestions(); // Hide any other open dropdowns
   activeField.value = field;
   activeSuggestionIndex.value = -1;
-  activeSuggestionSource.value = 'none';
-// Reset source
+  activeSuggestionSource.value = 'backend'; // Set source
 
-  // *** BUGFIX: Removed broken backend logic ***
-  // if (field === 'street' || field === 'postalCode' || field === 'city') {
-  //   if (suggestions.value.length === 0) {
-  //     backendDebouncer.run(() => fetchBackendSuggestions(field));
-//   }
-  // }
+  // *** MODIFIED: Trigger backend suggestions on focus ***
+  if (field === 'street' || field === 'postalCode' || field === 'city') {
+    // Pass null for typedValue to indicate it's a focus-based contextual search
+    debouncer.run(() => fetchSuggestions(field, null));
+  }
 };
 
 const selectSuggestion = (suggestion) => {
   if (!suggestion) return;
   const source = activeSuggestionSource.value;
-  if (source === 'google') {
-    // Google suggestion selected (full object)
-    emitUpdate('street', suggestion.street || addressModelValue.value.street || '');
-    emitUpdate('houseNumber', suggestion.houseNumber || addressModelValue.value.houseNumber || null);
-    emitUpdate('postalCode', suggestion.postalCode || addressModelValue.value.postalCode || '');
-    emitUpdate('city', suggestion.city || addressModelValue.value.city || '');
-    emitUpdate('country', suggestion.countryCode || addressModelValue.value.country || 'PL');
-    emitUpdate('latitude', suggestion.latitude);
-    emitUpdate('longitude', suggestion.longitude);
 
-    if (localPlacesAdapter.value) {
-      localPlacesAdapter.value.session.renew();
+  // *** MODIFIED: Logic for backend suggestion (AddressLookupSuggestionDTO) ***
+  if (source === 'backend') {
+    // A backend suggestion only contains the value for the *active field*
+    emitUpdate(activeField.value, suggestion.value);
+
+    // Optional: If the suggestion has coords, update them
+    if (suggestion.latitude != null && suggestion.longitude != null) {
+      emitUpdate('latitude', suggestion.latitude);
+      emitUpdate('longitude', suggestion.longitude);
     }
   }
-  // *** BUGFIX: Removed broken 'backend' suggestion logic ***
-  // else if (source === 'backend') { ... }
+  // *** END MODIFIED ***
 
   hideSuggestions();
 };
@@ -336,16 +333,11 @@ const hideSuggestions = () => {
 };
 
 const formatSuggestion = (s) => {
-  // Google Places suggestion
-  if (s.providerSource === 'GOOGLE_PLACES') {
-    if (s.fullAddressLabel) return s.fullAddressLabel;
-    const parts = [s.street, s.houseNumber, s.postalCode, s.city, s.countryCode].filter(Boolean);
-    return parts.join(', ') || 'Suggestion';
-  }
-  // Backend suggestion (AddressLookupSuggestionDTO)
+  // *** MODIFIED: All suggestions are now { value, ... } ***
   return s.value;
 };
-// --- Keyboard Navigation ---
+
+// --- Keyboard Navigation (Unchanged) ---
 const handleKeydown = (event) => {
   if (!showSuggestions.value) return;
 
@@ -368,9 +360,9 @@ const handleKeydown = (event) => {
     hideSuggestions();
   }
 };
+
 onUnmounted(() => {
-  placesDebouncer.cancel();
-  // backendDebouncer.cancel(); // REMOVED
+  debouncer.cancel();
 });
 </script>
 
