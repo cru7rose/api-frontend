@@ -167,8 +167,8 @@ suggestions"
 
 <script setup>
 import { ref, computed, reactive, watch, onUnmounted, nextTick } from 'vue';
-// *** MODIFIED: Import the correct service ***
-import { AddressLookupService } from '@/services/AddressLookupService';
+// *** MODIFIED: Import the correct service with .js extension ***
+import { AddressLookupService } from '@/services/AddressLookupService.js';
 import { DebounceTimer } from '@/services/DebounceTimer';
 
 const props = defineProps({
@@ -181,10 +181,6 @@ const props = defineProps({
     default: () => ({ street: '', houseNumber: null, postalCode: '', city: '', country: 'PL', latitude: null, longitude: null, alias: '' }),
   },
   // *** REMOVED: placesAdapter is no longer needed ***
-  // placesAdapter: {
-  //   type: Object,
-  //   default: null,
-  // },
 });
 const emit = defineEmits(['update']);
 
